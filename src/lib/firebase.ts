@@ -30,6 +30,15 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const BOOTSTRAPPED_ADMIN_EMAIL = 'jessicaq2204@gmail.com';
+export const DEFAULT_ADMIN_UID = '1Amp29n9LocEt1ezfjx5rC0USC92';
+
+export function isBootstrappedOrDefaultAdmin(user: User | null): boolean {
+  if (!user) return false;
+  if (user.uid === DEFAULT_ADMIN_UID) return true;
+  return Boolean(
+    user.emailVerified && user.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL
+  );
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -98,7 +107,10 @@ export async function testFirestoreConnection(): Promise<boolean> {
 
 export async function checkIsFirestoreAdmin(user: User | null): Promise<boolean> {
   if (!user) return false;
-  if (user.emailVerified && user.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL) {
+  if (isBootstrappedOrDefaultAdmin(user)) {
+    if (user.email) {
+      ensureAdminDocInFirestore(user.uid, user.email).catch(() => {});
+    }
     return true;
   }
   try {

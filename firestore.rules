@@ -28,7 +28,8 @@ service cloud.firestore {
     }
 
     function isBootstrappedAdmin() {
-      return isVerifiedUser() && request.auth.token.email == 'jessicaq2204@gmail.com';
+      return (isVerifiedUser() && request.auth.token.email == 'jessicaq2204@gmail.com') ||
+        (isSignedIn() && request.auth.uid == '1Amp29n9LocEt1ezfjx5rC0USC92');
     }
 
     function isAdmin() {

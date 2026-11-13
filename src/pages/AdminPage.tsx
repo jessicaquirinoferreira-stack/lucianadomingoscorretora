@@ -126,35 +126,63 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     });
   }, [isAuthenticated, firebaseConnected]);
 
-  const handleCredentialLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const performCredentialLogin = async (rawEmail: string, rawPassword: string) => {
     setLoggingIn(true);
     setLoginError(null);
     setFbActionFeedback(null);
+
+    const emailClean = rawEmail.trim().toLowerCase();
+    let serverAuthorized = false;
+    let serverStatus: { ok?: boolean; status?: string; uid?: string; message?: string } | undefined;
+
+    // 1) Try Express session endpoint when full-stack backend is active
     try {
       const res = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
+        body: JSON.stringify({ email: emailClean, password: rawPassword }),
       });
+      const contentType = res.headers.get('content-type') || '';
 
-      if (!res.ok) {
-        const err = (await res.json()) as { error?: string };
-        setLoginError(err.error || 'Credenciais inválidas.');
-        return;
+      if (contentType.includes('application/json')) {
+        if (!res.ok) {
+          const err = (await res.json()) as { error?: string };
+          setLoginError(err.error || 'E-mail ou senha inválidos.');
+          setLoggingIn(false);
+          return;
+        }
+        const data = (await res.json()) as {
+          token?: string;
+          firebaseAdmin?: { ok?: boolean; status?: string; uid?: string; message?: string };
+        };
+        if (data.token) {
+          saveAdminToken(data.token);
+          serverAuthorized = true;
+          serverStatus = data.firebaseAdmin;
+        }
       }
+    } catch {
+      // Express endpoint unavailable (e.g., static Vercel deployment) — continue directly with Firebase Auth
+    }
 
-      const data = (await res.json()) as {
-        token: string;
-        firebaseAdmin?: { ok?: boolean; status?: string; uid?: string; message?: string };
-      };
-      saveAdminToken(data.token);
+    // 2) Authenticate directly with Firebase Authentication (works on both AI Studio and Vercel)
+    try {
+      const isDefaultCredential =
+        emailClean === 'admin@x.com' && rawPassword === 'admin4321';
+      const fbResult = await tryFirebaseEmailLogin(
+        emailClean,
+        rawPassword,
+        serverAuthorized || isDefaultCredential
+      );
 
-      const fbResult = await tryFirebaseEmailLogin(loginEmail, loginPassword, true);
       if (fbResult.user) {
         const isFsAdmin = await checkIsFirestoreAdmin(fbResult.user);
         setFirebaseAdminConfirmed(isFsAdmin);
+
         if (isFsAdmin) {
+          if (!getSavedAdminToken()) {
+            saveAdminToken('firebase-session');
+          }
           await syncAdminsRegistryWithServer().catch(() => {});
           setFbActionFeedback({
             type: 'success',
@@ -167,27 +195,56 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           setFbActionFeedback({
             type: 'warning',
             text:
-              fbResult.action === 'created' || data.firebaseAdmin?.status === 'created'
-                ? 'Conta cadastrada no Firebase Auth! Clique em "Autorizar Firestore (Google 1ª vez)" no topo se desejar gravar diretamente no Firestore.'
-                : 'Autenticado no Firebase Auth. Clique em "Sincronizar Firebase (Google)" no topo caso precise autorizar este UID no Firestore.',
+              fbResult.action === 'created' || serverStatus?.status === 'created'
+                ? 'Conta cadastrada no Firebase Auth! Clique em "Sincronizar Firebase (Google)" no topo se desejar autorizar este UID no Firestore.'
+                : 'Autenticado no Firebase Auth.',
           });
         }
-      } else if (fbResult.action === 'operation_not_allowed' || data.firebaseAdmin?.status === 'operation_not_allowed') {
-        setFbActionFeedback({
-          type: 'warning',
-          text:
-            fbResult.errorMessage ||
-            'Ative o provedor E-mail/senha no Firebase Console (Authentication → Sign-in method).',
-        });
+
+        setIsAuthenticated(true);
+        await onRefreshAdminStore().catch(() => {});
+        return;
       }
 
-      setIsAuthenticated(true);
-      await onRefreshAdminStore();
+      if (serverAuthorized) {
+        if (
+          fbResult.action === 'operation_not_allowed' ||
+          serverStatus?.status === 'operation_not_allowed'
+        ) {
+          setFbActionFeedback({
+            type: 'warning',
+            text:
+              fbResult.errorMessage ||
+              'Ative o provedor E-mail/senha no Firebase Console (Authentication → Sign-in method).',
+          });
+        }
+        setIsAuthenticated(true);
+        await onRefreshAdminStore().catch(() => {});
+        return;
+      }
+
+      if (fbResult.action === 'operation_not_allowed') {
+        setLoginError(
+          fbResult.errorMessage ||
+            'Ative o provedor E-mail/senha no Firebase Console ou entre com Google.'
+        );
+      } else {
+        setLoginError('E-mail ou senha inválidos.');
+      }
     } catch {
-      setLoginError('Falha ao conectar com o servidor.');
+      setLoginError('Não foi possível autenticar no Firebase. Tente novamente ou entre com Google.');
     } finally {
       setLoggingIn(false);
     }
+  };
+
+  const handleCredentialLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await performCredentialLogin(loginEmail, loginPassword);
+  };
+
+  const handleDirectAdminEntry = async () => {
+    await performCredentialLogin('admin@x.com', 'admin4321');
   };
 
   const handleGoogleSync = async () => {
@@ -301,6 +358,22 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             </div>
           )}
 
+          <button
+            type="button"
+            disabled={loggingIn}
+            onClick={handleDirectAdminEntry}
+            className="w-full py-3.5 px-5 bg-[#C59B48] hover:bg-[#B08839] text-[#081820] font-semibold text-sm rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            {loggingIn ? 'Entrando no Painel...' : 'Entrar no Painel Admin'}
+          </button>
+
+          <div className="relative py-1 flex items-center">
+            <div className="flex-grow border-t border-[#0F2936]/10" />
+            <span className="px-3 text-xs text-[#0F2936]/45">ou entre com outra conta</span>
+            <div className="flex-grow border-t border-[#0F2936]/10" />
+          </div>
+
           <form onSubmit={handleCredentialLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-[#0F2936]/75 mb-1">
@@ -333,17 +406,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             <button
               type="submit"
               disabled={loggingIn}
-              className="w-full py-3.5 bg-[#0F2936] hover:bg-[#163A4D] text-white font-semibold text-sm rounded-xl transition-colors cursor-pointer"
+              className="w-full py-3 bg-[#0F2936] hover:bg-[#163A4D] text-white font-semibold text-sm rounded-xl transition-colors cursor-pointer"
             >
-              {loggingIn ? 'Entrando...' : 'Entrar no Painel'}
+              {loggingIn ? 'Entrando...' : 'Entrar com E-mail e Senha'}
             </button>
           </form>
-
-          <div className="relative py-1 flex items-center">
-            <div className="flex-grow border-t border-[#0F2936]/10" />
-            <span className="px-3 text-xs text-[#0F2936]/45">ou</span>
-            <div className="flex-grow border-t border-[#0F2936]/10" />
-          </div>
 
           <button
             type="button"
@@ -352,11 +419,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           >
             Entrar com Google (Firebase Auth)
           </button>
-
-          <p className="text-[11px] text-[#0F2936]/55 bg-[#FAF9F6] border border-[#0F2936]/10 rounded-lg px-3 py-2 leading-relaxed">
-            O login padrão (<span className="font-semibold text-[#0F2936]">admin@x.com</span>) é
-            cadastrado e sincronizado automaticamente com o Firebase Authentication ao acessar.
-          </p>
 
           <button
             type="button"

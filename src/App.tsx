@@ -176,6 +176,86 @@ export default function App() {
     return () => unsub();
   }, [refreshAdmin]);
 
+  const buildClientSmartMatch = useCallback(
+    (answers: SmartSearchAnswers): SmartSearchResponse => {
+      const available = store.properties.filter((p) => p.status !== 'Vendido');
+      const textLower = [
+        answers.freeText,
+        answers.peopleCount,
+        answers.studentOrUniversity,
+        answers.occupancyPreference,
+        answers.lifestyle,
+        answers.region,
+        answers.budgetRange,
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      const scored = available.map((p) => {
+        let score = 70;
+        const reasons: string[] = [];
+
+        if (
+          answers.region &&
+          !answers.region.toLowerCase().includes('todo') &&
+          p.city.toLowerCase().includes(answers.region.toLowerCase())
+        ) {
+          score += 14;
+          reasons.push(`Localizado em ${p.city}, exatamente na região escolhida`);
+        }
+        if (
+          (answers.studentOrUniversity.toLowerCase().includes('sim') ||
+            textLower.includes('faculdade') ||
+            textLower.includes('feevale') ||
+            textLower.includes('unisinos')) &&
+          p.nearUniversity
+        ) {
+          score += 15;
+          reasons.push(
+            p.universityDistance || 'Fácil acesso às universidades do Vale dos Sinos'
+          );
+        }
+        if (
+          answers.occupancyPreference.toLowerCase().includes('compartilhado') &&
+          (p.occupancyType === 'Compartilhado' || p.occupancyType === 'Ambos')
+        ) {
+          score += 8;
+          reasons.push('Planta versátil preparada para moradia compartilhada com privacidade');
+        }
+        if (answers.lifestyle) {
+          const lifeLower = answers.lifestyle.toLowerCase();
+          const matchedTag = p.lifestyleTags.find((tag) =>
+            lifeLower.includes(tag.toLowerCase().split(' ')[0])
+          );
+          if (matchedTag) {
+            score += 7;
+            reasons.push(`Alinhado ao estilo "${matchedTag}" que você priorizou`);
+          }
+        }
+
+        return {
+          propertyId: p.id,
+          matchScore: Math.min(99, Math.max(60, score)),
+          reason:
+            reasons.length > 0
+              ? `${reasons.slice(0, 2).join('. ')}.`
+              : `Excelente equilíbrio entre localização em ${p.neighborhood} (${p.city}) e padrão construtivo.`,
+        };
+      });
+
+      scored.sort((a, b) => b.matchScore - a.matchScore);
+      return {
+        headline: answers.region
+          ? `Selecionamos opções alinhadas ao seu perfil em ${answers.region}`
+          : 'Selecionamos os imóveis que mais combinam com o seu momento',
+        summary:
+          'Analisamos seu perfil de moradia, estilo de vida e localização desejada para priorizar apenas imóveis com aderência real.',
+        recommendations: scored.slice(0, 6),
+      };
+    },
+    [store.properties]
+  );
+
   const handleSmartSearch = async (answers: SmartSearchAnswers) => {
     setIsSearching(true);
     try {
@@ -187,15 +267,23 @@ export default function App() {
           properties: store.properties,
         }),
       });
-      if (res.ok) {
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('application/json')) {
         const result = (await res.json()) as SmartSearchResponse;
         setAiResult(result);
         setCatalogPreset(null);
         navigate('/resultados');
+        return;
       }
+    } catch {
+      // Static fallback below
     } finally {
       setIsSearching(false);
     }
+
+    setAiResult(buildClientSmartMatch(answers));
+    setCatalogPreset(null);
+    navigate('/resultados');
   };
 
   // Route matching

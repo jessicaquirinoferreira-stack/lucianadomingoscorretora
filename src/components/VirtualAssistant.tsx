@@ -71,6 +71,26 @@ export const VirtualAssistant: React.FC<VirtualAssistantProps> = ({
     setInput('');
     setLoading(true);
 
+    const buildFallbackReply = (q: string): string => {
+      const lower = q.toLowerCase();
+      if (lower.includes('instagram') || lower.includes('insta') || lower.includes('rede')) {
+        return `Você pode acompanhar lançamentos, tours e novidades da ${settings.brokerName} no Instagram ${settings.instagramHandle} ou conversar diretamente pelo WhatsApp oficial (51) 99822-8587.`;
+      }
+      if (lower.includes('whatsapp') || lower.includes('whats') || lower.includes('contato') || lower.includes('falar')) {
+        return `O atendimento direto com a ${settings.brokerName} (${settings.creci}) acontece pelo WhatsApp oficial (51) 99822-8587 e também no Instagram ${settings.instagramHandle}.`;
+      }
+      if (lower.includes('cidade') || lower.includes('regi') || lower.includes('estância') || lower.includes('estancia') || lower.includes('vale')) {
+        return `Atendemos Estância Velha e todo o Vale dos Sinos — incluindo Novo Hamburgo (Feevale), São Leopoldo (Unisinos) e Campo Bom. Chame no WhatsApp (51) 99822-8587 ou acompanhe ${settings.instagramHandle}.`;
+      }
+      if (lower.includes('financ') || lower.includes('entrada') || lower.includes('parcela') || lower.includes('banco')) {
+        return `Sim! Trabalhamos com financiamento bancário (SAC e Price) e uso de FGTS. Simule direto na página de cada imóvel ou envie seu perfil no WhatsApp (51) 99822-8587.`;
+      }
+      if (lower.includes('agenci') || lower.includes('vender') || lower.includes('alugar') || lower.includes('meu imóvel') || lower.includes('meu imovel')) {
+        return `A ${settings.brokerName} faz agenciamento completo com apresentação editorial e divulgação estratégica no Instagram ${settings.instagramHandle}. Fale pelo WhatsApp (51) 99822-8587.`;
+      }
+      return `Temos ${propertiesCount > 0 ? `${propertiesCount} imóveis e lançamentos selecionados` : 'excelentes opções'} em Estância Velha e Vale dos Sinos. Fale com a ${settings.brokerName} pelo WhatsApp (51) 99822-8587 ou siga ${settings.instagramHandle} no Instagram.`;
+    };
+
     try {
       const res = await fetch('/api/ai/assistant', {
         method: 'POST',
@@ -84,15 +104,17 @@ export const VirtualAssistant: React.FC<VirtualAssistantProps> = ({
           propertiesCount,
         }),
       });
-      const data = (await res.json()) as { reply?: string };
+      const ct = res.headers.get('content-type') || '';
+      const data =
+        res.ok && ct.includes('application/json')
+          ? ((await res.json()) as { reply?: string })
+          : {};
       setMessages((prev) => [
         ...prev,
         {
           id: `sofia_${Date.now()}`,
           sender: 'sofia',
-          text:
-            data.reply ||
-            `Você pode falar com a ${settings.brokerName} diretamente pelo WhatsApp (51) 99822-8587 ou acompanhar no Instagram ${settings.instagramHandle}.`,
+          text: data.reply || buildFallbackReply(question),
           showChannels: true,
         },
       ]);
@@ -102,7 +124,7 @@ export const VirtualAssistant: React.FC<VirtualAssistantProps> = ({
         {
           id: `sofia_${Date.now()}`,
           sender: 'sofia',
-          text: `Fale diretamente com a ${settings.brokerName} pelo WhatsApp (51) 99822-8587 ou acompanhe as novidades no Instagram ${settings.instagramHandle}.`,
+          text: buildFallbackReply(question),
           showChannels: true,
         },
       ]);
