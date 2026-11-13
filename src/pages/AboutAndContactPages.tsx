@@ -12,6 +12,16 @@ interface AboutPageProps {
 }
 
 export const AboutPage: React.FC<AboutPageProps> = ({ settings, onNavigate }) => {
+  const photoUrl = settings.aboutPhoto || BRAND_IMAGES.broker;
+  const title = settings.aboutTitle || settings.brokerName || 'Luciana Domingos';
+  const subtitle = settings.aboutSubtitle || `Corretora de Imóveis · ${settings.creci}`;
+  const bio1 =
+    settings.aboutBio1 ||
+    'Com atuação focada em agenciamentos e vendas de imóveis em Estância Velha e em todo o Vale dos Sinos, acredito que escolher um imóvel não começa em uma lista interminável de quartos e valores — começa ouvindo pessoas.';
+  const bio2 =
+    settings.aboutBio2 ||
+    'Seja para uma família buscando mais espaço e natureza, para estudantes que precisam de praticidade perto da Feevale ou Unisinos, ou para investidores atentos à valorização regional, meu compromisso é entregar clareza, acolhimento e segurança em todas as etapas da negociação.';
+
   return (
     <div className="bg-[#FAF9F6] min-h-screen py-12 sm:py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
@@ -22,8 +32,8 @@ export const AboutPage: React.FC<AboutPageProps> = ({ settings, onNavigate }) =>
               offsetRange={[-16, 20]}
             >
               <SafeImage
-                src={BRAND_IMAGES.broker}
-                alt="Luciana Domingos Corretora de Imóveis"
+                src={photoUrl}
+                alt={title}
                 className="w-full h-full object-cover object-top"
               />
             </ParallaxMedia>
@@ -31,21 +41,17 @@ export const AboutPage: React.FC<AboutPageProps> = ({ settings, onNavigate }) =>
 
           <Reveal delay={0.1} className="lg:col-span-7 flex flex-col justify-center space-y-6">
             <div className="text-xs font-semibold text-[#B08839]">
-              Corretora de Imóveis · {settings.creci}
+              {subtitle}
             </div>
             <h1 className="font-serif text-4xl sm:text-6xl font-semibold text-[#0F2936] leading-tight">
-              Luciana Domingos
+              {title}
             </h1>
             <p className="font-serif italic text-2xl text-[#163A4D]">
               “{settings.slogan}”
             </p>
             <div className="space-y-4 text-base text-[#0F2936]/80 leading-relaxed">
-              <p>
-                Com atuação focada em agenciamentos e vendas de imóveis em Estância Velha e em todo o Vale dos Sinos, acredito que escolher um imóvel não começa em uma lista interminável de quartos e valores — começa ouvindo pessoas.
-              </p>
-              <p>
-                Seja para uma família buscando mais espaço e natureza, para estudantes que precisam de praticidade perto da Feevale ou Unisinos, ou para investidores atentos à valorização regional, meu compromisso é entregar clareza, acolhimento e segurança em todas as etapas da negociação.
-              </p>
+              <p>{bio1}</p>
+              <p>{bio2}</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-5 border-t border-[#0F2936]/10">

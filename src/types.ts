@@ -177,6 +177,11 @@ export interface SiteSettings {
   instagramHandle: string;
   contactEmail: string;
   officeAddress: string;
+  aboutTitle?: string;
+  aboutSubtitle?: string;
+  aboutBio1?: string;
+  aboutBio2?: string;
+  aboutPhoto?: string;
   categories?: SiteCategory[];
   updatedAt: string;
 }

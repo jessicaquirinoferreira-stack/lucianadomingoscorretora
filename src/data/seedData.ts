@@ -135,6 +135,13 @@ export const SEED_SETTINGS: SiteSettings = {
   instagramHandle: '@lucianadomingos.imoveis',
   contactEmail: 'contato@lucianadomingos.com.br',
   officeAddress: 'Av. Presidente Vargas, 1240 · Centro, Estância Velha · RS',
+  aboutTitle: 'Luciana Domingos',
+  aboutSubtitle: 'Corretora de Imóveis · CRECI 73892F',
+  aboutBio1:
+    'Com atuação focada em agenciamentos e vendas de imóveis em Estância Velha e em todo o Vale dos Sinos, acredito que escolher um imóvel não começa em uma lista interminável de quartos e valores — começa ouvindo pessoas.',
+  aboutBio2:
+    'Seja para uma família buscando mais espaço e natureza, para estudantes que precisam de praticidade perto da Feevale ou Unisinos, ou para investidores atentos à valorização regional, meu compromisso é entregar clareza, acolhimento e segurança em todas as etapas da negociação.',
+  aboutPhoto: 'https://i.postimg.cc/kX3LpCsv/3524.jpg',
   categories: DEFAULT_CATEGORIES,
   updatedAt: NOW,
 };

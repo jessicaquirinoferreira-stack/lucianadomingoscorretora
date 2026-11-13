@@ -15,9 +15,12 @@ import {
   Sparkles,
   Tag,
   Trash2,
+  Upload,
   Users,
 } from 'lucide-react';
 import { DEFAULT_CATEGORIES } from '../data/seedData.ts';
+import { SafeImage } from '../components/SafeImage.tsx';
+import { uploadMediaToBlob } from '../lib/mediaOptimizer.ts';
 import {
   fetchFirebaseAdminStatus,
   formatCurrency,
@@ -1027,6 +1030,115 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                       }
                       className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
                     />
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-[#0F2936]/10 space-y-4">
+                  <h4 className="font-serif text-lg font-semibold text-[#0F2936]">
+                    Personalização da Página "Sobre" (Em Tempo Real)
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
+                        Título Principal (Nome)
+                      </label>
+                      <input
+                        type="text"
+                        value={settingsForm.aboutTitle || ''}
+                        onChange={(e) =>
+                          setSettingsForm({ ...settingsForm, aboutTitle: e.target.value })
+                        }
+                        placeholder="Luciana Domingos"
+                        className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
+                        Subtítulo / Kicker
+                      </label>
+                      <input
+                        type="text"
+                        value={settingsForm.aboutSubtitle || ''}
+                        onChange={(e) =>
+                          setSettingsForm({ ...settingsForm, aboutSubtitle: e.target.value })
+                        }
+                        placeholder="Corretora de Imóveis · CRECI 73892F"
+                        className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
+                        Foto da Corretora (Vercel Blob)
+                      </label>
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-xl overflow-hidden bg-[#FAF9F6] border border-[#0F2936]/15 shrink-0">
+                          <SafeImage
+                            src={settingsForm.aboutPhoto || 'https://i.postimg.cc/kX3LpCsv/3524.jpg'}
+                            alt="Sobre"
+                            className="w-full h-full object-cover object-top"
+                          />
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <input
+                            type="text"
+                            value={settingsForm.aboutPhoto || ''}
+                            onChange={(e) =>
+                              setSettingsForm({ ...settingsForm, aboutPhoto: e.target.value })
+                            }
+                            placeholder="URL da foto ou faça upload"
+                            className="w-full px-3.5 py-2 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-xs"
+                          />
+                          <label className="inline-flex items-center gap-2 px-4 py-2 bg-[#0F2936]/10 hover:bg-[#0F2936]/15 text-[#0F2936] text-xs font-semibold rounded-lg cursor-pointer">
+                            <Upload className="w-3.5 h-3.5 text-[#B08839]" />
+                            <span>Carregar Foto (Vercel Blob)</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                try {
+                                  const uploaded = await uploadMediaToBlob(file, 'settings/about', {
+                                    maxDimension: 1200,
+                                  });
+                                  setSettingsForm({ ...settingsForm, aboutPhoto: uploaded.url });
+                                } catch (err) {
+                                  console.error('Blob upload error:', err);
+                                }
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
+                        Parágrafo 1 da Biografia
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={settingsForm.aboutBio1 || ''}
+                        onChange={(e) =>
+                          setSettingsForm({ ...settingsForm, aboutBio1: e.target.value })
+                        }
+                        className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
+                        Parágrafo 2 da Biografia
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={settingsForm.aboutBio2 || ''}
+                        onChange={(e) =>
+                          setSettingsForm({ ...settingsForm, aboutBio2: e.target.value })
+                        }
+                        className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+                      />
+                    </div>
                   </div>
                 </div>
 
