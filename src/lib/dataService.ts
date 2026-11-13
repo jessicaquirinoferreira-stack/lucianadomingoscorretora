@@ -1,9 +1,11 @@
 import {
   auth,
+  BOOTSTRAPPED_ADMIN_EMAIL,
   collection,
   db,
   deleteDoc,
   doc,
+  ensureAdminDocInFirestore,
   getDoc,
   getDocs,
   handleFirestoreError,
@@ -15,6 +17,7 @@ import {
   where,
 } from './firebase.ts';
 import {
+  normalizeAssetImageUrl,
   SEED_DEVELOPMENTS,
   SEED_LANDING_PAGES,
   SEED_LEADS,
@@ -69,8 +72,19 @@ export function formatCurrency(value: number): string {
   }).format(value);
 }
 
+let firebaseAdminConfirmed = false;
+
+export function setFirebaseAdminConfirmed(active: boolean) {
+  firebaseAdminConfirmed = active;
+}
+
 export function isFirebaseAdminActive(): boolean {
-  return Boolean(auth.currentUser && auth.currentUser.emailVerified);
+  const user = auth.currentUser;
+  if (!user) return false;
+  if (firebaseAdminConfirmed) return true;
+  return Boolean(
+    user.emailVerified && user.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL
+  );
 }
 
 function authHeaders(): Record<string, string> {
@@ -81,6 +95,144 @@ function authHeaders(): Record<string, string> {
   if (token) headers.Authorization = `Bearer ${token}`;
   if (isFirebaseAdminActive()) headers['x-firebase-admin'] = 'true';
   return headers;
+}
+
+export interface FirebaseProvisionStatusResponse {
+  defaultAdmin: {
+    ok: boolean;
+    status: string;
+    email: string;
+    uid?: string;
+    message?: string;
+  };
+  registeredAdmins: Array<{
+    email: string;
+    uid: string | null;
+    createdAt: string;
+  }>;
+}
+
+export async function fetchFirebaseAdminStatus(): Promise<FirebaseProvisionStatusResponse | null> {
+  try {
+    const res = await fetch('/api/admin/firebase-status', {
+      headers: authHeaders(),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as FirebaseProvisionStatusResponse;
+  } catch {
+    return null;
+  }
+}
+
+export async function syncAdminsRegistryWithServer(): Promise<number> {
+  if (!isFirebaseAdminActive() || !auth.currentUser) return 0;
+  let synced = 0;
+
+  if (auth.currentUser.email) {
+    const okSelf = await ensureAdminDocInFirestore(
+      auth.currentUser.uid,
+      auth.currentUser.email
+    );
+    if (okSelf) synced += 1;
+  }
+
+  const status = await fetchFirebaseAdminStatus();
+  if (status) {
+    if (status.defaultAdmin?.uid && status.defaultAdmin?.email) {
+      const ok = await ensureAdminDocInFirestore(
+        status.defaultAdmin.uid,
+        status.defaultAdmin.email
+      );
+      if (ok) synced += 1;
+    }
+    for (const item of status.registeredAdmins) {
+      if (item.uid && item.email) {
+        const ok = await ensureAdminDocInFirestore(item.uid, item.email);
+        if (ok) synced += 1;
+      }
+    }
+  }
+
+  return synced;
+}
+
+export async function registerNewFirebaseAdmin(
+  email?: string,
+  password?: string
+): Promise<{
+  ok: boolean;
+  status: string;
+  email: string;
+  uid?: string;
+  firestoreSynced?: boolean;
+  message?: string;
+}> {
+  const res = await fetch('/api/admin/firebase-register', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ email, password }),
+  });
+  const data = (await res.json()) as {
+    ok?: boolean;
+    status?: string;
+    email?: string;
+    uid?: string;
+    message?: string;
+    error?: string;
+  };
+
+  if (!res.ok || !data.ok) {
+    return {
+      ok: false,
+      status: data.status || 'error',
+      email: data.email || email || '',
+      message: data.message || data.error || 'Falha ao cadastrar admin no Firebase.',
+    };
+  }
+
+  let firestoreSynced = false;
+  if (data.uid && data.email && isFirebaseAdminActive()) {
+    firestoreSynced = await ensureAdminDocInFirestore(data.uid, data.email);
+  }
+
+  return {
+    ok: true,
+    status: data.status || 'created',
+    email: data.email || email || '',
+    uid: data.uid,
+    firestoreSynced,
+    message: data.message,
+  };
+}
+
+function normalizeCatalogEntities<T extends Omit<AppDataState, 'leads'>>(data: T): T {
+  return {
+    ...data,
+    properties: data.properties.map((p) => ({
+      ...p,
+      images: Array.isArray(p.images) ? p.images.map((img) => normalizeAssetImageUrl(img)) : [],
+    })),
+    developments: data.developments.map((d) => ({
+      ...d,
+      heroImage: normalizeAssetImageUrl(d.heroImage),
+      galleryImages: Array.isArray(d.galleryImages)
+        ? d.galleryImages.map((img) => normalizeAssetImageUrl(img))
+        : [],
+      floorPlanImages: Array.isArray(d.floorPlanImages)
+        ? d.floorPlanImages.map((img) => normalizeAssetImageUrl(img))
+        : [],
+    })),
+    landingPages: data.landingPages.map((lp) => ({
+      ...lp,
+      heroImage: normalizeAssetImageUrl(lp.heroImage),
+      galleryImages: Array.isArray(lp.galleryImages)
+        ? lp.galleryImages.map((img) => normalizeAssetImageUrl(img))
+        : [],
+      floorPlanImages: Array.isArray(lp.floorPlanImages)
+        ? lp.floorPlanImages.map((img) => normalizeAssetImageUrl(img))
+        : [],
+    })),
+  };
 }
 
 export async function loadPublicCatalog(): Promise<Omit<AppDataState, 'leads'>> {
@@ -130,16 +282,16 @@ export async function loadPublicCatalog(): Promise<Omit<AppDataState, 'leads'>> 
       ? normalizeTimestamps(settingsSnap.data() as SiteSettings)
       : null;
 
-    return {
+    return normalizeCatalogEntities({
       properties: fsProps.length > 0 ? fsProps : serverCatalog.properties,
       developments: fsDevs.length > 0 ? fsDevs : serverCatalog.developments,
       landingPages: fsLps.length > 0 ? fsLps : serverCatalog.landingPages,
       testimonials: fsTests.length > 0 ? fsTests : serverCatalog.testimonials,
       settings: fsSettings ?? serverCatalog.settings,
-    };
+    });
   } catch (err) {
     console.warn('Firestore public catalog fallback:', err);
-    return serverCatalog;
+    return normalizeCatalogEntities(serverCatalog);
   }
 }
 
@@ -210,7 +362,7 @@ export async function loadAdminStore(): Promise<AppDataState> {
     }
   }
 
-  return state;
+  return normalizeCatalogEntities(state);
 }
 
 export async function seedFirestoreFromStore(store: AppDataState): Promise<void> {

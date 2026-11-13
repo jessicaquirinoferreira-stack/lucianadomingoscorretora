@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import {
+  normalizeAssetImageUrl,
   SEED_DEVELOPMENTS,
   SEED_LANDING_PAGES,
   SEED_LEADS,
@@ -31,11 +32,226 @@ const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = path.join(__dirname, '.data');
 const STORE_PATH = path.join(DATA_DIR, 'cms-store.json');
 
-const ADMIN_EMAIL = 'admin@x.com';
-const ADMIN_PASS = 'admin4321';
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@x.com').trim().toLowerCase();
+const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'admin4321';
+const ADMIN_ACCOUNTS_PATH = path.join(DATA_DIR, 'admin-accounts.json');
 const SESSION_SECRET =
   process.env.SESSION_SECRET ||
   crypto.createHash('sha256').update(`ld-imoveis-${process.cwd()}`).digest('hex');
+
+interface StoredAdminAccount {
+  email: string;
+  salt: string;
+  passwordHash: string;
+  firebaseUid?: string;
+  createdAt: string;
+}
+
+interface FirebaseAdminProvisionResult {
+  ok: boolean;
+  status: 'existing' | 'created' | 'email_exists_password_mismatch' | 'operation_not_allowed' | 'error';
+  email: string;
+  uid?: string;
+  message?: string;
+}
+
+let firebaseWebApiKeyCache: string | null = null;
+let defaultFirebaseAdminCache: FirebaseAdminProvisionResult | null = null;
+
+async function getFirebaseWebApiKey(): Promise<string | null> {
+  if (firebaseWebApiKeyCache) return firebaseWebApiKeyCache;
+  try {
+    const raw = await fs.readFile(path.join(__dirname, 'firebase-applet-config.json'), 'utf8');
+    const parsed = JSON.parse(raw) as { apiKey?: string };
+    firebaseWebApiKeyCache = parsed.apiKey || null;
+    return firebaseWebApiKeyCache;
+  } catch {
+    return null;
+  }
+}
+
+function hashAdminPassword(password: string, salt?: string): { salt: string; hash: string } {
+  const usedSalt = salt || crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(password, usedSalt, 64).toString('hex');
+  return { salt: usedSalt, hash: derived };
+}
+
+function verifyAdminPasswordHash(password: string, salt: string, expectedHash: string): boolean {
+  const { hash } = hashAdminPassword(password, salt);
+  if (hash.length !== expectedHash.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(expectedHash, 'hex'));
+}
+
+async function readStoredAdminAccounts(): Promise<StoredAdminAccount[]> {
+  try {
+    const raw = await fs.readFile(ADMIN_ACCOUNTS_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as StoredAdminAccount[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeStoredAdminAccounts(accounts: StoredAdminAccount[]): Promise<void> {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(ADMIN_ACCOUNTS_PATH, JSON.stringify(accounts, null, 2), 'utf8');
+}
+
+async function ensureFirebaseAuthAccount(
+  email: string,
+  password: string
+): Promise<FirebaseAdminProvisionResult> {
+  const cleanEmail = email.trim().toLowerCase();
+  const apiKey = await getFirebaseWebApiKey();
+  if (!apiKey) {
+    return {
+      ok: false,
+      status: 'error',
+      email: cleanEmail,
+      message: 'Configuração do Firebase (apiKey) não encontrada.',
+    };
+  }
+
+  try {
+    const signInRes = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          password,
+          returnSecureToken: true,
+        }),
+      }
+    );
+    const signInData = (await signInRes.json()) as {
+      localId?: string;
+      email?: string;
+      error?: { message?: string };
+    };
+
+    if (signInRes.ok && signInData.localId) {
+      return {
+        ok: true,
+        status: 'existing',
+        email: cleanEmail,
+        uid: signInData.localId,
+      };
+    }
+
+    const errMsg = signInData.error?.message || '';
+    if (errMsg.includes('OPERATION_NOT_ALLOWED')) {
+      return {
+        ok: false,
+        status: 'operation_not_allowed',
+        email: cleanEmail,
+        message:
+          'Ative o provedor E-mail/senha no Firebase Console (Authentication → Sign-in method → E-mail/senha).',
+      };
+    }
+
+    if (
+      errMsg.includes('EMAIL_NOT_FOUND') ||
+      errMsg.includes('INVALID_LOGIN_CREDENTIALS') ||
+      errMsg.includes('INVALID_PASSWORD')
+    ) {
+      const signUpRes = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            password,
+            returnSecureToken: true,
+          }),
+        }
+      );
+      const signUpData = (await signUpRes.json()) as {
+        localId?: string;
+        email?: string;
+        error?: { message?: string };
+      };
+
+      if (signUpRes.ok && signUpData.localId) {
+        return {
+          ok: true,
+          status: 'created',
+          email: cleanEmail,
+          uid: signUpData.localId,
+        };
+      }
+
+      const signUpErr = signUpData.error?.message || '';
+      if (signUpErr.includes('EMAIL_EXISTS')) {
+        return {
+          ok: false,
+          status: 'email_exists_password_mismatch',
+          email: cleanEmail,
+          message:
+            'Este e-mail já está cadastrado no Firebase Auth com outra senha.',
+        };
+      }
+      if (signUpErr.includes('OPERATION_NOT_ALLOWED')) {
+        return {
+          ok: false,
+          status: 'operation_not_allowed',
+          email: cleanEmail,
+          message:
+            'Ative o provedor E-mail/senha no Firebase Console (Authentication → Sign-in method → E-mail/senha).',
+        };
+      }
+      return {
+        ok: false,
+        status: 'error',
+        email: cleanEmail,
+        message: signUpErr || 'Erro ao criar conta admin no Firebase Auth.',
+      };
+    }
+
+    return {
+      ok: false,
+      status: 'error',
+      email: cleanEmail,
+      message: errMsg || 'Falha ao verificar conta no Firebase Auth.',
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 'error',
+      email: cleanEmail,
+      message: err instanceof Error ? err.message : 'Erro de rede ao conectar ao Firebase Auth.',
+    };
+  }
+}
+
+async function ensureDefaultAdminProvisioned(): Promise<FirebaseAdminProvisionResult> {
+  const result = await ensureFirebaseAuthAccount(ADMIN_EMAIL, ADMIN_PASS);
+  defaultFirebaseAdminCache = result;
+  if (result.ok && result.uid) {
+    const accounts = await readStoredAdminAccounts();
+    const existingIdx = accounts.findIndex((a) => a.email === ADMIN_EMAIL);
+    const { salt, hash } = hashAdminPassword(ADMIN_PASS);
+    if (existingIdx === -1) {
+      accounts.push({
+        email: ADMIN_EMAIL,
+        salt,
+        passwordHash: hash,
+        firebaseUid: result.uid,
+        createdAt: new Date().toISOString(),
+      });
+      await writeStoredAdminAccounts(accounts);
+    } else if (accounts[existingIdx].firebaseUid !== result.uid) {
+      accounts[existingIdx] = {
+        ...accounts[existingIdx],
+        firebaseUid: result.uid,
+      };
+      await writeStoredAdminAccounts(accounts);
+    }
+  }
+  return result;
+}
 
 interface CmsStore {
   properties: Property[];
@@ -57,12 +273,42 @@ function getDefaultStore(): CmsStore {
   };
 }
 
+function normalizeStoreImages(store: CmsStore): CmsStore {
+  return {
+    ...store,
+    properties: store.properties.map((p) => ({
+      ...p,
+      images: Array.isArray(p.images) ? p.images.map((img) => normalizeAssetImageUrl(img)) : [],
+    })),
+    developments: store.developments.map((d) => ({
+      ...d,
+      heroImage: normalizeAssetImageUrl(d.heroImage),
+      galleryImages: Array.isArray(d.galleryImages)
+        ? d.galleryImages.map((img) => normalizeAssetImageUrl(img))
+        : [],
+      floorPlanImages: Array.isArray(d.floorPlanImages)
+        ? d.floorPlanImages.map((img) => normalizeAssetImageUrl(img))
+        : [],
+    })),
+    landingPages: store.landingPages.map((lp) => ({
+      ...lp,
+      heroImage: normalizeAssetImageUrl(lp.heroImage),
+      galleryImages: Array.isArray(lp.galleryImages)
+        ? lp.galleryImages.map((img) => normalizeAssetImageUrl(img))
+        : [],
+      floorPlanImages: Array.isArray(lp.floorPlanImages)
+        ? lp.floorPlanImages.map((img) => normalizeAssetImageUrl(img))
+        : [],
+    })),
+  };
+}
+
 async function readStore(): Promise<CmsStore> {
   try {
     const raw = await fs.readFile(STORE_PATH, 'utf8');
     const parsed = JSON.parse(raw) as Partial<CmsStore>;
     const defaults = getDefaultStore();
-    return {
+    const loaded: CmsStore = {
       properties: Array.isArray(parsed.properties) ? parsed.properties : defaults.properties,
       developments: Array.isArray(parsed.developments) ? parsed.developments : defaults.developments,
       landingPages: Array.isArray(parsed.landingPages) ? parsed.landingPages : defaults.landingPages,
@@ -70,6 +316,11 @@ async function readStore(): Promise<CmsStore> {
       testimonials: Array.isArray(parsed.testimonials) ? parsed.testimonials : defaults.testimonials,
       settings: parsed.settings ?? defaults.settings,
     };
+    const normalized = normalizeStoreImages(loaded);
+    if (raw.includes('/src/assets/images/')) {
+      await writeStore(normalized);
+    }
+    return normalized;
   } catch {
     const defaults = getDefaultStore();
     await writeStore(defaults);
@@ -329,17 +580,48 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '4mb' }));
 
-  // Admin Login Endpoint (admin@x.com / admin4321)
-  app.post('/api/admin/login', (req, res) => {
+  // Automatically ensure default admin login/password is registered in Firebase Auth on server boot
+  ensureDefaultAdminProvisioned()
+    .then((res) => {
+      if (res.ok) {
+        console.log(`Firebase Auth admin provisioned (${res.status}): ${res.email} [${res.uid}]`);
+      } else {
+        console.warn(`Firebase Auth admin provisioning note: ${res.message}`);
+      }
+    })
+    .catch(() => {});
+
+  // Admin Login Endpoint (default admin@x.com / admin4321 + custom registered admins)
+  app.post('/api/admin/login', async (req, res) => {
     const { email, password } = req.body as { email?: string; password?: string };
-    if (
-      typeof email === 'string' &&
-      typeof password === 'string' &&
-      email.trim().toLowerCase() === ADMIN_EMAIL &&
-      password === ADMIN_PASS
-    ) {
-      const token = signAdminToken(ADMIN_EMAIL);
-      return res.json({ token, email: ADMIN_EMAIL, role: 'admin' });
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const isDefaultMatch = normalizedEmail === ADMIN_EMAIL && password === ADMIN_PASS;
+    let isRegisteredMatch = false;
+
+    if (!isDefaultMatch) {
+      const accounts = await readStoredAdminAccounts();
+      const found = accounts.find((a) => a.email === normalizedEmail);
+      if (found && verifyAdminPasswordHash(password, found.salt, found.passwordHash)) {
+        isRegisteredMatch = true;
+      }
+    }
+
+    if (isDefaultMatch || isRegisteredMatch) {
+      const token = signAdminToken(normalizedEmail);
+      const firebaseAdmin = await ensureFirebaseAuthAccount(normalizedEmail, password);
+      if (isDefaultMatch) {
+        defaultFirebaseAdminCache = firebaseAdmin;
+      }
+      return res.json({
+        token,
+        email: normalizedEmail,
+        role: 'admin',
+        firebaseAdmin,
+      });
     }
     return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
   });
@@ -349,6 +631,67 @@ async function startServer() {
     const session = verifyAdminToken(token);
     if (!session) return res.status(401).json({ valid: false });
     return res.json({ valid: true, ...session });
+  });
+
+  // Firebase Admin Provisioning Status & Auto-Registration
+  app.get('/api/admin/firebase-status', async (req, res) => {
+    const session = verifyAdminToken(extractBearer(req));
+    const hasFirebaseHeader = req.headers['x-firebase-admin'] === 'true';
+    if (!session && !hasFirebaseHeader) {
+      return res.status(401).json({ error: 'Não autorizado.' });
+    }
+    const defaultStatus = defaultFirebaseAdminCache || (await ensureDefaultAdminProvisioned());
+    const accounts = await readStoredAdminAccounts();
+    return res.json({
+      defaultAdmin: defaultStatus,
+      registeredAdmins: accounts.map((a) => ({
+        email: a.email,
+        uid: a.firebaseUid || null,
+        createdAt: a.createdAt,
+      })),
+    });
+  });
+
+  app.post('/api/admin/firebase-register', async (req, res) => {
+    const session = verifyAdminToken(extractBearer(req));
+    const hasFirebaseHeader = req.headers['x-firebase-admin'] === 'true';
+    if (!session && !hasFirebaseHeader) {
+      return res.status(401).json({ error: 'Não autorizado.' });
+    }
+
+    const body = req.body as { email?: string; password?: string };
+    const targetEmail = (body.email || ADMIN_EMAIL).trim().toLowerCase();
+    const targetPassword = body.password || (targetEmail === ADMIN_EMAIL ? ADMIN_PASS : '');
+
+    if (!targetEmail || !targetEmail.includes('@')) {
+      return res.status(400).json({ error: 'Informe um e-mail válido.' });
+    }
+    if (targetPassword.length < 6) {
+      return res.status(400).json({ error: 'A senha precisa ter pelo menos 6 caracteres.' });
+    }
+
+    const result = await ensureFirebaseAuthAccount(targetEmail, targetPassword);
+    if (targetEmail === ADMIN_EMAIL && targetPassword === ADMIN_PASS) {
+      defaultFirebaseAdminCache = result;
+    }
+
+    if (result.ok && result.uid) {
+      const accounts = await readStoredAdminAccounts();
+      const { salt, hash } = hashAdminPassword(targetPassword);
+      const nextEntry: StoredAdminAccount = {
+        email: targetEmail,
+        salt,
+        passwordHash: hash,
+        firebaseUid: result.uid,
+        createdAt: new Date().toISOString(),
+      };
+      const idx = accounts.findIndex((a) => a.email === targetEmail);
+      if (idx >= 0) accounts[idx] = nextEntry;
+      else accounts.push(nextEntry);
+      await writeStoredAdminAccounts(accounts);
+    }
+
+    return res.status(result.ok ? 200 : 400).json(result);
   });
 
   // Public Catalog (excludes PII leads, draft landing pages, and unapproved testimonials)

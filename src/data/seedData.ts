@@ -8,14 +8,26 @@ import type {
 } from '../types.ts';
 
 export const BRAND_IMAGES = {
-  hero: '/src/assets/images/hero_architecture_sinos_1794521105207.jpg',
-  broker: '/src/assets/images/luciana_domingos_broker_1794521105105.jpg',
-  assistant: '/src/assets/images/assistant_avatar_sofia_1794569265266.jpg',
-  devReserva: '/src/assets/images/dev_reserva_bosque_1794521106578.jpg',
-  devVista: '/src/assets/images/dev_vista_universitaria_1794521106898.jpg',
-  interiorLiving: '/src/assets/images/prop_interior_living_1794521107024.jpg',
-  leisureAmenities: '/src/assets/images/prop_leisure_amenities_1794521107705.jpg',
+  hero: '/images/hero_architecture_sinos_1794521105207.jpg',
+  broker: '/images/luciana_domingos_broker_1794521105105.jpg',
+  brokerPortrait: '/images/luciana_domingos_retrato.png',
+  assistant: '/images/assistant_avatar_sofia_1794569265266.jpg',
+  devReserva: '/images/dev_reserva_bosque_1794521106578.jpg',
+  devVista: '/images/dev_vista_universitaria_1794521106898.jpg',
+  interiorLiving: '/images/prop_interior_living_1794521107024.jpg',
+  leisureAmenities: '/images/prop_leisure_amenities_1794521107705.jpg',
 };
+
+export function normalizeAssetImageUrl(url?: string): string {
+  if (!url) return '';
+  if (url.startsWith('/src/assets/images/')) {
+    return url.replace('/src/assets/images/', '/images/');
+  }
+  if (url === 'https://i.postimg.cc/J7Nj4FY9/Retrato-corporativo-de-mulher-sorridente.png') {
+    return BRAND_IMAGES.brokerPortrait;
+  }
+  return url;
+}
 
 const NOW = '2026-11-10T12:00:00.000Z';
 

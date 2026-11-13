@@ -4,6 +4,8 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
   signOut,
   onAuthStateChanged,
   type User,
@@ -27,6 +29,7 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+export const BOOTSTRAPPED_ADMIN_EMAIL = 'jessicaq2204@gmail.com';
 
 export enum OperationType {
   CREATE = 'create',
@@ -93,6 +96,45 @@ export async function testFirestoreConnection(): Promise<boolean> {
   }
 }
 
+export async function checkIsFirestoreAdmin(user: User | null): Promise<boolean> {
+  if (!user) return false;
+  if (user.emailVerified && user.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL) {
+    return true;
+  }
+  try {
+    const snap = await getDocFromServer(doc(db, 'admins', user.uid));
+    return snap.exists();
+  } catch {
+    try {
+      const snap = await getDoc(doc(db, 'admins', user.uid));
+      return snap.exists();
+    } catch {
+      return false;
+    }
+  }
+}
+
+export async function ensureAdminDocInFirestore(
+  targetUid: string,
+  targetEmail: string
+): Promise<boolean> {
+  if (!auth.currentUser || !targetUid) return false;
+  try {
+    const ref = doc(db, 'admins', targetUid);
+    const snap = await getDoc(ref);
+    if (snap.exists()) return true;
+    await setDoc(ref, {
+      uid: targetUid.slice(0, 128),
+      email: targetEmail.trim().toLowerCase().slice(0, 160),
+      role: 'admin',
+      createdAt: serverTimestamp(),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function signInWithGoogleAdmin(): Promise<User> {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
@@ -100,12 +142,69 @@ export async function signInWithGoogleAdmin(): Promise<User> {
   return cred.user;
 }
 
-export async function tryFirebaseEmailLogin(email: string, password: string): Promise<User | null> {
+export interface FirebaseEmailLoginResult {
+  user: User | null;
+  action: 'signed_in' | 'created' | 'operation_not_allowed' | 'error';
+  errorMessage?: string;
+}
+
+export async function tryFirebaseEmailLogin(
+  email: string,
+  password: string,
+  allowAutoRegister = true
+): Promise<FirebaseEmailLoginResult> {
+  const cleanEmail = email.trim().toLowerCase();
   try {
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    return cred.user;
-  } catch {
-    return null;
+    const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    return { user: cred.user, action: 'signed_in' };
+  } catch (err) {
+    const code = (err as { code?: string })?.code || '';
+    if (code === 'auth/operation-not-allowed') {
+      return {
+        user: null,
+        action: 'operation_not_allowed',
+        errorMessage:
+          'Ative o provedor E-mail/senha no Firebase Console (Authentication → Sign-in method).',
+      };
+    }
+
+    if (
+      allowAutoRegister &&
+      (code === 'auth/user-not-found' || code === 'auth/invalid-credential')
+    ) {
+      try {
+        const created = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+        if (!cleanEmail.endsWith('@x.com')) {
+          sendEmailVerification(created.user).catch(() => {});
+        }
+        return { user: created.user, action: 'created' };
+      } catch (createErr) {
+        const createCode = (createErr as { code?: string })?.code || '';
+        if (createCode === 'auth/operation-not-allowed') {
+          return {
+            user: null,
+            action: 'operation_not_allowed',
+            errorMessage:
+              'Ative o provedor E-mail/senha no Firebase Console (Authentication → Sign-in method).',
+          };
+        }
+        return {
+          user: null,
+          action: 'error',
+          errorMessage:
+            createErr instanceof Error
+              ? createErr.message
+              : 'Não foi possível cadastrar o admin no Firebase Auth.',
+        };
+      }
+    }
+
+    return {
+      user: null,
+      action: 'error',
+      errorMessage:
+        err instanceof Error ? err.message : 'Falha ao autenticar no Firebase Auth.',
+    };
   }
 }
 

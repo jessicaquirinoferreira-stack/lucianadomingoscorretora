@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Building2 } from 'lucide-react';
+import { normalizeAssetImageUrl } from '../data/seedData.ts';
 
 interface SafeImageProps {
   src?: string;
@@ -15,8 +16,9 @@ export const SafeImage: React.FC<SafeImageProps> = ({
   fallbackLabel,
 }) => {
   const [failed, setFailed] = useState(false);
+  const resolvedSrc = normalizeAssetImageUrl(src);
 
-  if (!src || failed) {
+  if (!resolvedSrc || failed) {
     return (
       <div
         role="img"
@@ -33,7 +35,7 @@ export const SafeImage: React.FC<SafeImageProps> = ({
 
   return (
     <img
-      src={src}
+      src={resolvedSrc}
       alt={alt}
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}

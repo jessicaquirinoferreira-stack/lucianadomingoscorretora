@@ -17,6 +17,8 @@ import {
   removeProperty,
   removeTestimonial,
   saveSiteSettings,
+  setFirebaseAdminConfirmed,
+  syncAdminsRegistryWithServer,
   updateLeadStatus,
   upsertDevelopment,
   upsertLandingPage,
@@ -24,7 +26,11 @@ import {
   upsertTestimonial,
   type AppDataState,
 } from './lib/dataService.ts';
-import { subscribeAuth, testFirestoreConnection } from './lib/firebase.ts';
+import {
+  checkIsFirestoreAdmin,
+  subscribeAuth,
+  testFirestoreConnection,
+} from './lib/firebase.ts';
 import type {
   CatalogFilterPreset,
   Development,
@@ -157,10 +163,12 @@ export default function App() {
       refreshAdmin();
     }
 
-    const unsub = subscribeAuth((user) => {
-      const active = Boolean(user && user.emailVerified);
+    const unsub = subscribeAuth(async (user) => {
+      const active = await checkIsFirestoreAdmin(user);
+      setFirebaseAdminConfirmed(active);
       setFirebaseConnected(active);
       if (active) {
+        await syncAdminsRegistryWithServer().catch(() => {});
         refreshAdmin();
       }
     });

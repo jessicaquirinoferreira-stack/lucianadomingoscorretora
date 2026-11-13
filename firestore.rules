@@ -34,7 +34,7 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && (
         isBootstrappedAdmin() ||
-        (isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)))
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
 

@@ -1,27 +1,37 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Building2,
   Check,
   Home,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   MessageCircle,
   MessageSquare,
   Plus,
+  RefreshCw,
   Settings,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Users,
 } from 'lucide-react';
 import {
+  fetchFirebaseAdminStatus,
   formatCurrency,
   getSavedAdminToken,
   isFirebaseAdminActive,
+  registerNewFirebaseAdmin,
   saveAdminToken,
   seedFirestoreFromStore,
+  setFirebaseAdminConfirmed,
+  syncAdminsRegistryWithServer,
   type AppDataState,
+  type FirebaseProvisionStatusResponse,
 } from '../lib/dataService.ts';
 import {
+  auth,
+  checkIsFirestoreAdmin,
   logoutFirebase,
   signInWithGoogleAdmin,
   tryFirebaseEmailLogin,
@@ -92,16 +102,35 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const [settingsForm, setSettingsForm] = useState<SiteSettings>(store.settings);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
+  // Firebase Auth auto-provisioning state
+  const [fbProvisionStatus, setFbProvisionStatus] =
+    useState<FirebaseProvisionStatusResponse | null>(null);
+  const [fbActionFeedback, setFbActionFeedback] = useState<{
+    type: 'success' | 'warning' | 'error';
+    text: string;
+  } | null>(null);
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [registeringAdmin, setRegisteringAdmin] = useState(false);
+
   // Testimonial quick form
   const [newTestName, setNewTestName] = useState('');
   const [newTestRole, setNewTestRole] = useState('');
   const [newTestCity, setNewTestCity] = useState('Estância Velha · RS');
   const [newTestQuote, setNewTestQuote] = useState('');
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetchFirebaseAdminStatus().then((status) => {
+      if (status) setFbProvisionStatus(status);
+    });
+  }, [isAuthenticated, firebaseConnected]);
+
   const handleCredentialLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoggingIn(true);
     setLoginError(null);
+    setFbActionFeedback(null);
     try {
       const res = await fetch('/api/admin/login', {
         method: 'POST',
@@ -115,9 +144,43 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         return;
       }
 
-      const data = (await res.json()) as { token: string };
+      const data = (await res.json()) as {
+        token: string;
+        firebaseAdmin?: { ok?: boolean; status?: string; uid?: string; message?: string };
+      };
       saveAdminToken(data.token);
-      await tryFirebaseEmailLogin(loginEmail, loginPassword);
+
+      const fbResult = await tryFirebaseEmailLogin(loginEmail, loginPassword, true);
+      if (fbResult.user) {
+        const isFsAdmin = await checkIsFirestoreAdmin(fbResult.user);
+        setFirebaseAdminConfirmed(isFsAdmin);
+        if (isFsAdmin) {
+          await syncAdminsRegistryWithServer().catch(() => {});
+          setFbActionFeedback({
+            type: 'success',
+            text:
+              fbResult.action === 'created'
+                ? 'Login e senha cadastrados automaticamente no Firebase Auth e Firestore.'
+                : 'Conectado automaticamente ao Firebase Auth e Firestore.',
+          });
+        } else {
+          setFbActionFeedback({
+            type: 'warning',
+            text:
+              fbResult.action === 'created' || data.firebaseAdmin?.status === 'created'
+                ? 'Conta cadastrada no Firebase Auth! Clique em "Autorizar Firestore (Google 1ª vez)" no topo se desejar gravar diretamente no Firestore.'
+                : 'Autenticado no Firebase Auth. Clique em "Sincronizar Firebase (Google)" no topo caso precise autorizar este UID no Firestore.',
+          });
+        }
+      } else if (fbResult.action === 'operation_not_allowed' || data.firebaseAdmin?.status === 'operation_not_allowed') {
+        setFbActionFeedback({
+          type: 'warning',
+          text:
+            fbResult.errorMessage ||
+            'Ative o provedor E-mail/senha no Firebase Console (Authentication → Sign-in method).',
+        });
+      }
+
       setIsAuthenticated(true);
       await onRefreshAdminStore();
     } catch {
@@ -130,10 +193,21 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const handleGoogleSync = async () => {
     setLoginError(null);
     try {
-      await signInWithGoogleAdmin();
-      await seedFirestoreFromStore(store);
+      const user = await signInWithGoogleAdmin();
+      const isFsAdmin = await checkIsFirestoreAdmin(user);
+      setFirebaseAdminConfirmed(isFsAdmin);
+      if (isFsAdmin) {
+        await syncAdminsRegistryWithServer().catch(() => {});
+        await seedFirestoreFromStore(store);
+        setFbActionFeedback({
+          type: 'success',
+          text: 'Firebase sincronizado e administradores autorizados automaticamente no Firestore.',
+        });
+      }
       setIsAuthenticated(true);
       await onRefreshAdminStore();
+      const updatedStatus = await fetchFirebaseAdminStatus();
+      if (updatedStatus) setFbProvisionStatus(updatedStatus);
     } catch (err) {
       setLoginError(
         err instanceof Error ? err.message : 'Não foi possível conectar via Google.'
@@ -141,8 +215,68 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     }
   };
 
+  const handleVerifyDefaultFirebaseAdmin = async () => {
+    setRegisteringAdmin(true);
+    setFbActionFeedback(null);
+    try {
+      const result = await registerNewFirebaseAdmin();
+      if (!result.ok) {
+        setFbActionFeedback({
+          type: result.status === 'operation_not_allowed' ? 'warning' : 'error',
+          text: result.message || 'Não foi possível registrar o admin padrão no Firebase.',
+        });
+        return;
+      }
+      if (isFirebaseAdminActive()) {
+        await syncAdminsRegistryWithServer().catch(() => {});
+      }
+      const status = await fetchFirebaseAdminStatus();
+      if (status) setFbProvisionStatus(status);
+      setFbActionFeedback({
+        type: 'success',
+        text: `Admin ${result.email} verificado no Firebase Auth (UID: ${result.uid || 'ativo'}).`,
+      });
+    } finally {
+      setRegisteringAdmin(false);
+    }
+  };
+
+  const handleRegisterNewAdminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminEmail.trim() || newAdminPassword.length < 6) return;
+    setRegisteringAdmin(true);
+    setFbActionFeedback(null);
+    try {
+      const result = await registerNewFirebaseAdmin(newAdminEmail.trim(), newAdminPassword);
+      if (!result.ok) {
+        setFbActionFeedback({
+          type: result.status === 'operation_not_allowed' ? 'warning' : 'error',
+          text: result.message || 'Erro ao cadastrar login/senha no Firebase.',
+        });
+        return;
+      }
+      setNewAdminEmail('');
+      setNewAdminPassword('');
+      const status = await fetchFirebaseAdminStatus();
+      if (status) setFbProvisionStatus(status);
+      setFbActionFeedback({
+        type: 'success',
+        text: result.firestoreSynced
+          ? `Login ${result.email} cadastrado automaticamente no Firebase Auth e autorizado no Firestore!`
+          : `Login ${result.email} cadastrado no Firebase Auth e no painel!${
+              !firebaseConnected
+                ? ' (Conecte via Google 1x para gravar o UID no Firestore.)'
+                : ''
+            }`,
+      });
+    } finally {
+      setRegisteringAdmin(false);
+    }
+  };
+
   const handleLogout = async () => {
     saveAdminToken(null);
+    setFirebaseAdminConfirmed(false);
     await logoutFirebase().catch(() => {});
     setIsAuthenticated(false);
   };
@@ -218,6 +352,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           >
             Entrar com Google (Firebase Auth)
           </button>
+
+          <p className="text-[11px] text-[#0F2936]/55 bg-[#FAF9F6] border border-[#0F2936]/10 rounded-lg px-3 py-2 leading-relaxed">
+            O login padrão (<span className="font-semibold text-[#0F2936]">admin@x.com</span>) é
+            cadastrado e sincronizado automaticamente com o Firebase Authentication ao acessar.
+          </p>
 
           <button
             type="button"
@@ -362,6 +501,26 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         </header>
 
         <main className="flex-1 p-5 sm:p-8 max-w-6xl w-full mx-auto">
+          {fbActionFeedback && activeTab !== 'settings' && (
+            <div
+              className={`mb-6 text-xs font-medium px-4 py-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${
+                fbActionFeedback.type === 'success'
+                  ? 'bg-[#16A34A]/10 border-[#16A34A]/25 text-[#15803D]'
+                  : fbActionFeedback.type === 'warning'
+                  ? 'bg-[#C59B48]/15 border-[#C59B48]/35 text-[#0F2936]'
+                  : 'bg-[#DC2626]/10 border-[#DC2626]/25 text-[#DC2626]'
+              }`}
+            >
+              <span>{fbActionFeedback.text}</span>
+              <button
+                type="button"
+                onClick={() => setFbActionFeedback(null)}
+                className="text-[11px] font-semibold underline cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          )}
           {activeTab === 'dashboard' && (
             <div className="space-y-8">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -676,118 +835,228 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           )}
 
           {activeTab === 'settings' && (
-            <form
-              onSubmit={handleSaveSettingsSubmit}
-              className="bg-white border border-[#0F2936]/10 rounded-2xl p-6 sm:p-8 space-y-5 max-w-3xl"
-            >
-              <div className="flex items-center justify-between">
-                <h2 className="font-serif text-2xl font-semibold text-[#0F2936]">
-                  Configurações do Site
-                </h2>
-                {settingsSaved && (
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#16A34A]">
-                    <Check className="w-4 h-4" /> Configurações salvas
-                  </span>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
-                    Nome da Corretora
-                  </label>
-                  <input
-                    type="text"
-                    value={settingsForm.brokerName}
-                    onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, brokerName: e.target.value })
-                    }
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
-                    CRECI
-                  </label>
-                  <input
-                    type="text"
-                    value={settingsForm.creci}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, creci: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
-                    WhatsApp Oficial (somente dígitos com DDI)
-                  </label>
-                  <input
-                    type="text"
-                    value={settingsForm.whatsappNumber}
-                    onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, whatsappNumber: e.target.value })
-                    }
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm tabular-nums"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
-                    Instagram
-                  </label>
-                  <input
-                    type="text"
-                    value={settingsForm.instagramHandle}
-                    onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, instagramHandle: e.target.value })
-                    }
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
-                    Slogan Principal
-                  </label>
-                  <input
-                    type="text"
-                    value={settingsForm.slogan}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, slogan: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
-                    Título da Capa (Hero)
-                  </label>
-                  <input
-                    type="text"
-                    value={settingsForm.heroHeadline}
-                    onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, heroHeadline: e.target.value })
-                    }
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
-                    Endereço de Atendimento
-                  </label>
-                  <input
-                    type="text"
-                    value={settingsForm.officeAddress}
-                    onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, officeAddress: e.target.value })
-                    }
-                    className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="px-6 py-3 bg-[#0F2936] hover:bg-[#163A4D] text-white text-sm font-semibold rounded-xl cursor-pointer"
+            <div className="space-y-8 max-w-3xl">
+              <form
+                onSubmit={handleSaveSettingsSubmit}
+                className="bg-white border border-[#0F2936]/10 rounded-2xl p-6 sm:p-8 space-y-5"
               >
-                Salvar Configurações
-              </button>
-            </form>
+                <div className="flex items-center justify-between">
+                  <h2 className="font-serif text-2xl font-semibold text-[#0F2936]">
+                    Configurações do Site
+                  </h2>
+                  {settingsSaved && (
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#16A34A]">
+                      <Check className="w-4 h-4" /> Configurações salvas
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
+                      Nome da Corretora
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.brokerName}
+                      onChange={(e) =>
+                        setSettingsForm({ ...settingsForm, brokerName: e.target.value })
+                      }
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
+                      CRECI
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.creci}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, creci: e.target.value })}
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
+                      WhatsApp Oficial (somente dígitos com DDI)
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.whatsappNumber}
+                      onChange={(e) =>
+                        setSettingsForm({ ...settingsForm, whatsappNumber: e.target.value })
+                      }
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm tabular-nums"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
+                      Instagram
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.instagramHandle}
+                      onChange={(e) =>
+                        setSettingsForm({ ...settingsForm, instagramHandle: e.target.value })
+                      }
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
+                      Slogan Principal
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.slogan}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, slogan: e.target.value })}
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
+                      Título da Capa (Hero)
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.heroHeadline}
+                      onChange={(e) =>
+                        setSettingsForm({ ...settingsForm, heroHeadline: e.target.value })
+                      }
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
+                      Endereço de Atendimento
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.officeAddress}
+                      onChange={(e) =>
+                        setSettingsForm({ ...settingsForm, officeAddress: e.target.value })
+                      }
+                      className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-[#0F2936] hover:bg-[#163A4D] text-white text-sm font-semibold rounded-xl cursor-pointer"
+                >
+                  Salvar Configurações
+                </button>
+              </form>
+
+              {/* Firebase Admin Auto-Provisioning Card */}
+              <div className="bg-white border border-[#0F2936]/10 rounded-2xl p-6 sm:p-8 space-y-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#B08839]">
+                      <ShieldCheck className="w-4 h-4" />
+                      Firebase Authentication & Firestore
+                    </div>
+                    <h3 className="font-serif text-xl font-semibold text-[#0F2936]">
+                      Cadastro Automático de Login e Senha Admin no Firebase
+                    </h3>
+                    <p className="text-xs text-[#0F2936]/65 max-w-xl leading-relaxed">
+                      O acesso padrão (<span className="font-semibold">admin@x.com</span>) é verificado
+                      e cadastrado automaticamente no Firebase Auth. Você também pode criar novos
+                      logins administrativos abaixo.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={registeringAdmin}
+                    onClick={handleVerifyDefaultFirebaseAdmin}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-[#0F2936]/20 hover:border-[#C59B48] text-xs font-semibold text-[#0F2936] rounded-lg cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${registeringAdmin ? 'animate-spin' : ''}`} />
+                    Verificar Admin Padrão
+                  </button>
+                </div>
+
+                {fbActionFeedback && (
+                  <div
+                    className={`text-xs font-medium px-3.5 py-2.5 rounded-lg border ${
+                      fbActionFeedback.type === 'success'
+                        ? 'bg-[#16A34A]/10 border-[#16A34A]/25 text-[#15803D]'
+                        : fbActionFeedback.type === 'warning'
+                        ? 'bg-[#C59B48]/15 border-[#C59B48]/35 text-[#0F2936]'
+                        : 'bg-[#DC2626]/10 border-[#DC2626]/25 text-[#DC2626]'
+                    }`}
+                  >
+                    {fbActionFeedback.text}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#FAF9F6] border border-[#0F2936]/10 rounded-xl p-4 text-xs">
+                  <div>
+                    <span className="text-[#0F2936]/55 block">Conta Firebase Auth ativa:</span>
+                    <span className="font-semibold text-[#0F2936]">
+                      {auth.currentUser?.email || fbProvisionStatus?.defaultAdmin?.email || 'admin@x.com'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[#0F2936]/55 block">Status do Cadastro no Firebase:</span>
+                    <span
+                      className={`font-semibold ${
+                        fbProvisionStatus?.defaultAdmin?.ok
+                          ? 'text-[#15803D]'
+                          : 'text-[#B08839]'
+                      }`}
+                    >
+                      {fbProvisionStatus?.defaultAdmin?.ok
+                        ? `Cadastrado automaticamente (UID: ${
+                            fbProvisionStatus.defaultAdmin.uid?.slice(0, 10) || 'ativo'
+                          }...)`
+                        : fbProvisionStatus?.defaultAdmin?.message || 'Verificando...'}
+                    </span>
+                  </div>
+                </div>
+
+                <form
+                  onSubmit={handleRegisterNewAdminSubmit}
+                  className="pt-2 border-t border-[#0F2936]/10 space-y-4"
+                >
+                  <div className="flex items-center gap-2 text-xs font-semibold text-[#0F2936]">
+                    <KeyRound className="w-4 h-4 text-[#C59B48]" />
+                    Cadastrar Novo E-mail e Senha Admin no Firebase
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input
+                      type="email"
+                      required
+                      value={newAdminEmail}
+                      onChange={(e) => setNewAdminEmail(e.target.value)}
+                      placeholder="novo-admin@lucianadomingos.com.br"
+                      className="px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+                    />
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={newAdminPassword}
+                      onChange={(e) => setNewAdminPassword(e.target.value)}
+                      placeholder="Senha (mín. 6 caracteres)"
+                      className="px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={registeringAdmin}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0F2936] hover:bg-[#163A4D] text-white text-xs font-semibold rounded-xl cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    {registeringAdmin
+                      ? 'Cadastrando no Firebase...'
+                      : 'Cadastrar Admin Automaticamente no Firebase'}
+                  </button>
+                </form>
+              </div>
+            </div>
           )}
         </main>
       </div>

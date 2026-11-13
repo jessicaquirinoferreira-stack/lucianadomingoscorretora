@@ -895,7 +895,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                 scale={1}
               >
                 <SafeImage
-                  src="https://i.postimg.cc/J7Nj4FY9/Retrato-corporativo-de-mulher-sorridente.png"
+                  src={BRAND_IMAGES.brokerPortrait}
                   alt="Luciana Domingos Corretora de Imóveis CRECI 73892F"
                   className="w-full h-full object-contain object-center"
                 />
