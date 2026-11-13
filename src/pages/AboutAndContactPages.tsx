@@ -24,7 +24,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ settings, onNavigate }) =>
               <SafeImage
                 src={BRAND_IMAGES.broker}
                 alt="Luciana Domingos Corretora de Imóveis"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover object-top"
               />
             </ParallaxMedia>
           </Reveal>

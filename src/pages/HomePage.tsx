@@ -960,7 +960,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                 <SafeImage
                   src={BRAND_IMAGES.brokerPortrait}
                   alt="Luciana Domingos Corretora de Imóveis CRECI 73892F"
-                  className="w-full h-full object-contain object-center"
+                  className="w-full h-full object-cover object-top"
                 />
               </ParallaxMedia>
             </Reveal>

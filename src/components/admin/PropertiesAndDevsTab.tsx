@@ -68,6 +68,13 @@ export const PropertiesTab: React.FC<PropertiesTabProps> = ({
 
   const availableCategoryNames = Array.from(
     new Set([
+      'Apartamento',
+      'Casa',
+      'Sobrado',
+      'Cobertura',
+      'Studio',
+      'Terreno',
+      'Comercial',
       ...(categories && categories.length > 0 ? categories : DEFAULT_CATEGORIES).map(
         (c) => c.name
       ),
@@ -223,10 +230,14 @@ export const PropertiesTab: React.FC<PropertiesTabProps> = ({
                 Valor (R$) *
               </label>
               <input
-                type="number"
+                type="text"
                 required
-                value={editing.price}
-                onChange={(e) => setEditing({ ...editing, price: Number(e.target.value) })}
+                value={editing.price ? editing.price.toLocaleString('en-US') : ''}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, '');
+                  setEditing({ ...editing, price: raw ? Number(raw) : 0 });
+                }}
+                placeholder="Ex: 450,000"
                 className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm tabular-nums"
               />
             </div>
@@ -607,11 +618,13 @@ export const DevelopmentsTab: React.FC<DevelopmentsTabProps> = ({
                 Valor Inicial (R$)
               </label>
               <input
-                type="number"
-                value={editing.startingPrice}
-                onChange={(e) =>
-                  setEditing({ ...editing, startingPrice: Number(e.target.value) })
-                }
+                type="text"
+                value={editing.startingPrice ? editing.startingPrice.toLocaleString('en-US') : ''}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, '');
+                  setEditing({ ...editing, startingPrice: raw ? Number(raw) : 0 });
+                }}
+                placeholder="Ex: 480,000"
                 className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm tabular-nums"
               />
             </div>

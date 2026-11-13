@@ -71,11 +71,9 @@ export function slugify(text: string): string {
 }
 
 export function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    maximumFractionDigits: 0,
-  }).format(value);
+  if (!Number.isFinite(value)) return 'R$ 0';
+  const parts = Math.round(value).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `R$ ${parts}`;
 }
 
 let firebaseAdminConfirmed = false;

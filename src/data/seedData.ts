@@ -12,8 +12,8 @@ const BLOB_SITE_BASE = 'https://vmyn8cm8axjnihyn.public.blob.vercel-storage.com/
 
 export const BRAND_IMAGES = {
   hero: `${BLOB_SITE_BASE}/hero_architecture_sinos_1794521105207.jpg`,
-  broker: `${BLOB_SITE_BASE}/luciana_domingos_broker_1794521105105.jpg`,
-  brokerPortrait: `${BLOB_SITE_BASE}/luciana_domingos_retrato.png`,
+  broker: 'https://i.postimg.cc/kX3LpCsv/3524.jpg',
+  brokerPortrait: 'https://i.postimg.cc/kX3LpCsv/3524.jpg',
   assistant: `${BLOB_SITE_BASE}/assistant_avatar_sofia_1794569265266.jpg`,
   devReserva: `${BLOB_SITE_BASE}/dev_reserva_bosque_1794521106578.jpg`,
   devVista: `${BLOB_SITE_BASE}/dev_vista_universitaria_1794521106898.jpg`,
@@ -31,8 +31,11 @@ export function normalizeAssetImageUrl(url?: string): string {
     const file = url.replace('/images/', '');
     return `${BLOB_SITE_BASE}/${file}`;
   }
-  if (url === 'https://i.postimg.cc/J7Nj4FY9/Retrato-corporativo-de-mulher-sorridente.png') {
-    return BRAND_IMAGES.brokerPortrait;
+  if (
+    url === 'https://i.postimg.cc/J7Nj4FY9/Retrato-corporativo-de-mulher-sorridente.png' ||
+    url === 'https://i.postimg.cc/kX3LpCsv/3524.jpg'
+  ) {
+    return 'https://i.postimg.cc/kX3LpCsv/3524.jpg';
   }
   return url;
 }
