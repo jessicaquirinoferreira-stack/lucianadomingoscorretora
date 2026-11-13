@@ -13,7 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { BRAND_IMAGES } from '../data/seedData.ts';
+import { BRAND_IMAGES, DEFAULT_CATEGORIES } from '../data/seedData.ts';
 import { formatCurrency } from '../lib/dataService.ts';
 import type {
   CatalogFilterPreset,
@@ -247,6 +247,23 @@ export const HomePage: React.FC<HomePageProps> = ({
     ],
     []
   );
+
+  const homeCategories = useMemo(() => {
+    const source =
+      settings.categories && settings.categories.length > 0
+        ? settings.categories
+        : DEFAULT_CATEGORIES;
+    return source
+      .filter((cat) => cat.showOnHome)
+      .map((cat) => ({
+        ...cat,
+        count: properties.filter(
+          (p) =>
+            p.status !== 'Vendido' &&
+            p.propertyType.trim().toLowerCase() === cat.name.trim().toLowerCase()
+        ).length,
+      }));
+  }, [settings.categories, properties]);
 
   const regionStats = useMemo(() => {
     return REGION_GUIDES.map((guide) => {
@@ -525,6 +542,52 @@ export const HomePage: React.FC<HomePageProps> = ({
               ))}
             </div>
           </div>
+
+          {homeCategories.length > 0 && (
+            <Reveal delay={0.08} className="pt-4 border-t border-[#0F2936]/10 space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-semibold text-[#B08839]">
+                    Categorias do Portfólio
+                  </div>
+                  <h3 className="font-serif text-xl sm:text-2xl font-semibold text-[#0F2936]">
+                    Navegue diretamente por tipo de imóvel
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onBrowseCatalog()}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0F2936] hover:text-[#B08839] cursor-pointer"
+                >
+                  Ver todas as categorias
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+                {homeCategories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => onBrowseCatalog({ propertyType: cat.name })}
+                    className="group bg-[#FAF9F6] hover:bg-[#0F2936] border border-[#0F2936]/12 hover:border-[#C59B48] rounded-xl p-4 text-left transition-all duration-200 flex flex-col justify-between gap-2 cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-serif text-base sm:text-lg font-semibold text-[#0F2936] group-hover:text-white transition-colors truncate">
+                        {cat.name}
+                      </span>
+                      <ArrowUpRight className="w-4 h-4 text-[#C59B48] shrink-0 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                    </div>
+                    <div className="text-[11px] font-medium text-[#0F2936]/60 group-hover:text-white/75 tabular-nums">
+                      {cat.count > 0
+                        ? `${cat.count} ${cat.count === 1 ? 'disponível' : 'disponíveis'}`
+                        : cat.kicker || 'Ver opções'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Reveal>
+          )}
         </div>
       </section>
 

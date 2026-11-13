@@ -7,6 +7,9 @@ import {
   Car,
   Check,
   Columns3,
+  Download,
+  FileText,
+  Film,
   GraduationCap,
   Heart,
   MapPin,
@@ -288,6 +291,63 @@ export const PropertyDetailPage: React.FC<PropertyDetailPageProps> = ({
                       <Check className="w-4 h-4 text-[#C59B48] shrink-0" />
                       <span>{feat}</span>
                     </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {property.videoUrls && property.videoUrls.length > 0 && (
+              <div className="space-y-4">
+                <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#B08839]">
+                  <Film className="w-4 h-4" />
+                  Apresentação em Vídeo
+                </div>
+                <h2 className="font-serif text-2xl sm:text-3xl font-semibold text-[#0F2936]">
+                  Tour em Vídeo pelo Imóvel
+                </h2>
+                <div className="grid grid-cols-1 gap-4">
+                  {property.videoUrls.map((videoUrl, idx) => (
+                    <div
+                      key={`${videoUrl}-${idx}`}
+                      className="rounded-2xl overflow-hidden border border-[#0F2936]/12 bg-[#081820] shadow-sm"
+                    >
+                      <video
+                        src={videoUrl}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="w-full aspect-video"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {property.attachments && property.attachments.length > 0 && (
+              <div className="space-y-4">
+                <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#B08839]">
+                  <FileText className="w-4 h-4" />
+                  Documentação e Materiais
+                </div>
+                <h2 className="font-serif text-2xl sm:text-3xl font-semibold text-[#0F2936]">
+                  Anexos e Plantas Disponíveis
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {property.attachments.map((att, idx) => (
+                    <a
+                      key={`${att.url}-${idx}`}
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between gap-3 bg-white border border-[#0F2936]/12 hover:border-[#C59B48] rounded-xl px-4 py-3.5 text-sm font-medium text-[#0F2936] transition-colors"
+                    >
+                      <span className="flex items-center gap-2.5 truncate">
+                        <FileText className="w-4 h-4 text-[#C59B48] shrink-0" />
+                        <span className="truncate">{att.name}</span>
+                      </span>
+                      <Download className="w-4 h-4 text-[#0F2936]/60 shrink-0" />
+                    </a>
                   ))}
                 </div>
               </div>

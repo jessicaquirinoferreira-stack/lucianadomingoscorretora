@@ -3,25 +3,33 @@ import type {
   LandingPage,
   Lead,
   Property,
+  SiteCategory,
   SiteSettings,
   Testimonial,
 } from '../types.ts';
 
+const BLOB_SITE_BASE = 'https://vmyn8cm8axjnihyn.public.blob.vercel-storage.com/site-assets';
+
 export const BRAND_IMAGES = {
-  hero: '/images/hero_architecture_sinos_1794521105207.jpg',
-  broker: '/images/luciana_domingos_broker_1794521105105.jpg',
-  brokerPortrait: '/images/luciana_domingos_retrato.png',
-  assistant: '/images/assistant_avatar_sofia_1794569265266.jpg',
-  devReserva: '/images/dev_reserva_bosque_1794521106578.jpg',
-  devVista: '/images/dev_vista_universitaria_1794521106898.jpg',
-  interiorLiving: '/images/prop_interior_living_1794521107024.jpg',
-  leisureAmenities: '/images/prop_leisure_amenities_1794521107705.jpg',
+  hero: `${BLOB_SITE_BASE}/hero_architecture_sinos_1794521105207.jpg`,
+  broker: `${BLOB_SITE_BASE}/luciana_domingos_broker_1794521105105.jpg`,
+  brokerPortrait: `${BLOB_SITE_BASE}/luciana_domingos_retrato.png`,
+  assistant: `${BLOB_SITE_BASE}/assistant_avatar_sofia_1794569265266.jpg`,
+  devReserva: `${BLOB_SITE_BASE}/dev_reserva_bosque_1794521106578.jpg`,
+  devVista: `${BLOB_SITE_BASE}/dev_vista_universitaria_1794521106898.jpg`,
+  interiorLiving: `${BLOB_SITE_BASE}/prop_interior_living_1794521107024.jpg`,
+  leisureAmenities: `${BLOB_SITE_BASE}/prop_leisure_amenities_1794521107705.jpg`,
 };
 
 export function normalizeAssetImageUrl(url?: string): string {
   if (!url) return '';
   if (url.startsWith('/src/assets/images/')) {
-    return url.replace('/src/assets/images/', '/images/');
+    const file = url.replace('/src/assets/images/', '');
+    return `${BLOB_SITE_BASE}/${file}`;
+  }
+  if (url.startsWith('/images/')) {
+    const file = url.replace('/images/', '');
+    return `${BLOB_SITE_BASE}/${file}`;
   }
   if (url === 'https://i.postimg.cc/J7Nj4FY9/Retrato-corporativo-de-mulher-sorridente.png') {
     return BRAND_IMAGES.brokerPortrait;
@@ -29,7 +37,88 @@ export function normalizeAssetImageUrl(url?: string): string {
   return url;
 }
 
+export function getLocalFallbackImageUrl(url?: string): string | null {
+  if (!url) return null;
+  if (url.startsWith(`${BLOB_SITE_BASE}/`)) {
+    return `/images/${url.slice(BLOB_SITE_BASE.length + 1)}`;
+  }
+  return null;
+}
+
 const NOW = '2026-11-10T12:00:00.000Z';
+
+export const DEFAULT_CATEGORIES: SiteCategory[] = [
+  {
+    id: 'cat_apartamento',
+    name: 'Apartamento',
+    slug: 'apartamento',
+    kicker: 'Arquitetura & Conforto',
+    description: 'Plantas funcionais, sacadas gourmet e infraestrutura completa de condomínio.',
+    image: BRAND_IMAGES.interiorLiving,
+    showInMenu: true,
+    showOnHome: true,
+  },
+  {
+    id: 'cat_casa',
+    name: 'Casa',
+    slug: 'casa',
+    kicker: 'Espaço & Privacidade',
+    description: 'Residências térreas e em condomínio com pátio, área verde e conforto familiar.',
+    image: BRAND_IMAGES.hero,
+    showInMenu: true,
+    showOnHome: true,
+  },
+  {
+    id: 'cat_sobrado',
+    name: 'Sobrado',
+    slug: 'sobrado',
+    kicker: 'Amplitude & Design',
+    description: 'Projetos modernos em dois pavimentos com excelente aproveitamento solar.',
+    image: BRAND_IMAGES.devReserva,
+    showInMenu: true,
+    showOnHome: true,
+  },
+  {
+    id: 'cat_cobertura',
+    name: 'Cobertura',
+    slug: 'cobertura',
+    kicker: 'Exclusividade & Vista',
+    description: 'Terraços privativos e ambientes amplos para receber com sofisticação.',
+    image: BRAND_IMAGES.leisureAmenities,
+    showInMenu: true,
+    showOnHome: true,
+  },
+  {
+    id: 'cat_studio',
+    name: 'Studio',
+    slug: 'studio',
+    kicker: 'Praticidade Urbana',
+    description: 'Unidades compactas e inteligentes perto de universidades e serviços essenciais.',
+    image: BRAND_IMAGES.devVista,
+    showInMenu: true,
+    showOnHome: true,
+  },
+  {
+    id: 'cat_terreno',
+    name: 'Terreno',
+    slug: 'terreno',
+    kicker: 'Construa do Seu Jeito',
+    description: 'Lotes urbanos planos e terrenos em condomínio fechado para morar ou investir.',
+    image: BRAND_IMAGES.devReserva,
+    showInMenu: true,
+    showOnHome: true,
+  },
+  {
+    id: 'cat_comercial',
+    name: 'Comercial',
+    slug: 'comercial',
+    kicker: 'Negócios & Investimento',
+    description: 'Salas e pontos comerciais estratégicos nos principais eixos do Vale dos Sinos.',
+    image: BRAND_IMAGES.devVista,
+    showInMenu: true,
+    showOnHome: false,
+  },
+];
 
 export const SEED_SETTINGS: SiteSettings = {
   id: 'main',
@@ -43,6 +132,7 @@ export const SEED_SETTINGS: SiteSettings = {
   instagramHandle: '@lucianadomingos.imoveis',
   contactEmail: 'contato@lucianadomingos.com.br',
   officeAddress: 'Av. Presidente Vargas, 1240 · Centro, Estância Velha · RS',
+  categories: DEFAULT_CATEGORIES,
   updatedAt: NOW,
 };
 
@@ -316,6 +406,50 @@ export const SEED_PROPERTIES: Property[] = [
       BRAND_IMAGES.interiorLiving,
     ],
     featured: false,
+    createdAt: NOW,
+    updatedAt: NOW,
+  },
+  {
+    id: 'prop_terreno_lago_azul',
+    title: 'Terreno Plano de Esquina em Condomínio Fechado no Bairro Lago Azul',
+    slug: 'terreno-plano-esquina-lago-azul-estancia-velha',
+    description:
+      'Excelente lote plano com 420 m² (14m x 30m) em rua tranquila e arborizada no Bairro Lago Azul, Estância Velha. Orientação solar frente norte, pronto para construir residência contemporânea com ampla área de lazer.',
+    propertyType: 'Terreno',
+    purpose: 'Venda',
+    status: 'Disponível',
+    price: 365000,
+    condoFee: 320,
+    iptu: 890,
+    areaSqm: 420,
+    bedrooms: 0,
+    suites: 0,
+    bathrooms: 0,
+    parkingSpaces: 0,
+    city: 'Estância Velha',
+    neighborhood: 'Lago Azul',
+    address: 'Rua das Paineiras, Lote 18 · Lago Azul, Estância Velha',
+    nearUniversity: false,
+    universityDistance: '14 min da Universidade Feevale',
+    occupancyType: 'Exclusivo',
+    idealForPeople: 'Projeto residencial ou investimento',
+    lifestyleTags: [
+      'Tranquilidade e natureza',
+      'Construção personalizada',
+      'Condomínio fechado',
+      'Frente norte',
+    ],
+    features: [
+      'Terreno 100% plano pronto para construir',
+      'Matrícula individualizada e escritura imediata',
+      'Frente solar norte com vista para área verde',
+      'Infraestrutura completa com portaria e salão de festas',
+    ],
+    images: [
+      BRAND_IMAGES.devReserva,
+      BRAND_IMAGES.hero,
+    ],
+    featured: true,
     createdAt: NOW,
     updatedAt: NOW,
   },

@@ -5,6 +5,9 @@ import {
   Award,
   Check,
   CheckCircle2,
+  Download,
+  FileText,
+  Film,
   MapPin,
   MessageCircle,
   Quote,
@@ -311,6 +314,67 @@ export const DevelopmentLandingPage: React.FC<DevelopmentLandingPageProps> = ({
               onOpenLightbox={(idx) => setLightboxIndex(idx)}
             />
           </Reveal>
+
+          {((landingPage.videoUrls && landingPage.videoUrls.length > 0) ||
+            (development?.videoUrls && development.videoUrls.length > 0)) && (
+            <Reveal className="pt-8 space-y-5">
+              <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#B08839]">
+                <Film className="w-4 h-4" />
+                Tour Cinematográfico
+              </div>
+              <h3 className="font-serif text-2xl sm:text-3xl font-semibold text-[#0F2936]">
+                Vídeos do Empreendimento
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {(landingPage.videoUrls?.length
+                  ? landingPage.videoUrls
+                  : development?.videoUrls || []
+                ).map((videoUrl, idx) => (
+                  <div
+                    key={`${videoUrl}-${idx}`}
+                    className="rounded-2xl overflow-hidden border border-[#0F2936]/12 bg-[#081820] shadow-md"
+                  >
+                    <video
+                      src={videoUrl}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      className="w-full aspect-video"
+                    />
+                  </div>
+                ))}
+              </div>
+            </Reveal>
+          )}
+
+          {((landingPage.attachments && landingPage.attachments.length > 0) ||
+            (development?.attachments && development.attachments.length > 0)) && (
+            <Reveal className="pt-6 space-y-4">
+              <div className="text-xs font-semibold text-[#B08839]">
+                Materiais Técnicos e Books
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {(landingPage.attachments?.length
+                  ? landingPage.attachments
+                  : development?.attachments || []
+                ).map((att, idx) => (
+                  <a
+                    key={`${att.url}-${idx}`}
+                    href={att.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-3 bg-white border border-[#0F2936]/12 hover:border-[#C59B48] rounded-xl px-4 py-3.5 text-sm font-semibold text-[#0F2936] transition-colors"
+                  >
+                    <span className="flex items-center gap-2.5 truncate">
+                      <FileText className="w-4 h-4 text-[#C59B48] shrink-0" />
+                      <span className="truncate">{att.name}</span>
+                    </span>
+                    <Download className="w-4 h-4 text-[#0F2936]/60 shrink-0" />
+                  </a>
+                ))}
+              </div>
+            </Reveal>
+          )}
         </div>
       </section>
 

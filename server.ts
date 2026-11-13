@@ -4,8 +4,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
+import { del, put } from '@vercel/blob';
+import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import {
+  DEFAULT_CATEGORIES,
   normalizeAssetImageUrl,
   SEED_DEVELOPMENTS,
   SEED_LANDING_PAGES,
@@ -300,6 +303,15 @@ function normalizeStoreImages(store: CmsStore): CmsStore {
         ? lp.floorPlanImages.map((img) => normalizeAssetImageUrl(img))
         : [],
     })),
+    settings: {
+      ...store.settings,
+      categories: Array.isArray(store.settings?.categories)
+        ? store.settings.categories.map((cat) => ({
+            ...cat,
+            image: cat.image ? normalizeAssetImageUrl(cat.image) : undefined,
+          }))
+        : DEFAULT_CATEGORIES,
+    },
   };
 }
 
@@ -376,6 +388,67 @@ function extractBearer(req: express.Request): string | undefined {
     return header.slice(7).trim();
   }
   return undefined;
+}
+
+function sanitizeBlobSegment(value: string, fallback: string): string {
+  const cleaned = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 90);
+  return cleaned || fallback;
+}
+
+async function isAuthorizedAdminRequest(req: express.Request): Promise<boolean> {
+  const session = verifyAdminToken(extractBearer(req));
+  if (session) return true;
+
+  const idTokenHeader = req.headers['x-firebase-id-token'];
+  const idToken = typeof idTokenHeader === 'string' ? idTokenHeader.trim() : '';
+  if (idToken) {
+    const apiKey = await getFirebaseWebApiKey();
+    if (apiKey) {
+      try {
+        const res = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken }),
+          }
+        );
+        if (res.ok) {
+          const data = (await res.json()) as {
+            users?: Array<{ localId?: string; email?: string; emailVerified?: boolean }>;
+          };
+          const user = data.users?.[0];
+          if (user?.localId) {
+            if (user.localId === '1Amp29n9LocEt1ezfjx5rC0USC92') return true;
+            if (user.email?.toLowerCase() === ADMIN_EMAIL) return true;
+            if (user.emailVerified && user.email?.toLowerCase() === 'jessicaq2204@gmail.com') {
+              return true;
+            }
+            const accounts = await readStoredAdminAccounts();
+            if (
+              accounts.some(
+                (acc) =>
+                  acc.firebaseUid === user.localId ||
+                  (user.email && acc.email === user.email.toLowerCase())
+              )
+            ) {
+              return true;
+            }
+          }
+        }
+      } catch {
+        // Invalid or unreachable token lookup
+      }
+    }
+  }
+
+  return false;
 }
 
 function createGeminiClient(): GoogleGenAI | null {
@@ -578,7 +651,138 @@ function deterministicLandingPage(dev: Development) {
 
 async function startServer() {
   const app = express();
-  app.use(express.json({ limit: '4mb' }));
+
+  // Direct Binary Upload to Vercel Blob (Photos, Videos, PDFs/Attachments up to 100MB)
+  app.post(
+    '/api/blob/upload',
+    express.raw({ type: '*/*', limit: '100mb' }),
+    async (req, res) => {
+      try {
+        const authorized = await isAuthorizedAdminRequest(req);
+        if (!authorized) {
+          return res.status(401).json({ error: 'Não autorizado.' });
+        }
+
+        const token = process.env.BLOB_READ_WRITE_TOKEN;
+        if (!token) {
+          return res.status(500).json({ error: 'BLOB_READ_WRITE_TOKEN não configurado.' });
+        }
+
+        const rawFilename =
+          (typeof req.query.filename === 'string' ? req.query.filename : '') ||
+          (typeof req.headers['x-blob-filename'] === 'string' ? req.headers['x-blob-filename'] : '') ||
+          `arquivo-${Date.now()}`;
+        const rawFolder =
+          (typeof req.query.folder === 'string' ? req.query.folder : '') ||
+          (typeof req.headers['x-blob-folder'] === 'string' ? req.headers['x-blob-folder'] : '') ||
+          'uploads';
+        const contentType =
+          (typeof req.headers['content-type'] === 'string' && req.headers['content-type']) ||
+          'application/octet-stream';
+
+        const buffer = Buffer.isBuffer(req.body)
+          ? req.body
+          : Buffer.from(typeof req.body === 'string' ? req.body : '');
+
+        if (!buffer || buffer.length === 0) {
+          return res.status(400).json({ error: 'Arquivo vazio.' });
+        }
+
+        const safeFolder = sanitizeBlobSegment(rawFolder, 'uploads');
+        const safeFile = sanitizeBlobSegment(rawFilename, `arquivo-${Date.now()}`);
+        const pathname = `${safeFolder}/${safeFile}`;
+
+        const blob = await put(pathname, buffer, {
+          access: 'public',
+          token,
+          contentType,
+          addRandomSuffix: true,
+        });
+
+        return res.json({
+          url: blob.url,
+          pathname: blob.pathname,
+          contentType: blob.contentType,
+          size: buffer.length,
+        });
+      } catch (err) {
+        console.error('Vercel Blob upload error:', err);
+        return res.status(500).json({
+          error: err instanceof Error ? err.message : 'Erro ao enviar arquivo para Vercel Blob.',
+        });
+      }
+    }
+  );
+
+  app.use(express.json({ limit: '10mb' }));
+
+  app.post('/api/blob/client-upload', async (req, res) => {
+    try {
+      const token = process.env.BLOB_READ_WRITE_TOKEN;
+      if (!token) {
+        return res.status(500).json({ error: 'BLOB_READ_WRITE_TOKEN não configurado.' });
+      }
+      const body = req.body as HandleUploadBody;
+      const jsonResponse = await handleUpload({
+        body,
+        request: req,
+        token,
+        onBeforeGenerateToken: async () => {
+          const authorized = await isAuthorizedAdminRequest(req);
+          if (!authorized) {
+            throw new Error('Não autorizado para envio de arquivos.');
+          }
+          return {
+            allowedContentTypes: [
+              'image/webp',
+              'image/jpeg',
+              'image/png',
+              'image/avif',
+              'image/gif',
+              'video/mp4',
+              'video/webm',
+              'video/quicktime',
+              'application/pdf',
+              'application/msword',
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              'application/octet-stream',
+            ],
+            maximumSizeInBytes: 100 * 1024 * 1024,
+            addRandomSuffix: true,
+          };
+        },
+        onUploadCompleted: async () => {},
+      });
+      return res.json(jsonResponse);
+    } catch (err) {
+      return res.status(400).json({
+        error: err instanceof Error ? err.message : 'Erro ao gerar token do Vercel Blob.',
+      });
+    }
+  });
+
+  app.post('/api/blob/delete', async (req, res) => {
+    try {
+      const authorized = await isAuthorizedAdminRequest(req);
+      if (!authorized) {
+        return res.status(401).json({ error: 'Não autorizado.' });
+      }
+      const token = process.env.BLOB_READ_WRITE_TOKEN;
+      if (!token) {
+        return res.status(500).json({ error: 'BLOB_READ_WRITE_TOKEN não configurado.' });
+      }
+      const { url } = req.body as { url?: string };
+      if (!url || !url.includes('.blob.vercel-storage.com/') || url.includes('/site-assets/')) {
+        return res.json({ ok: true, skipped: true });
+      }
+      await del(url, { token });
+      return res.json({ ok: true });
+    } catch (err) {
+      return res.status(500).json({
+        error: err instanceof Error ? err.message : 'Erro ao excluir arquivo do Vercel Blob.',
+      });
+    }
+  });
 
   // Automatically ensure default admin login/password is registered in Firebase Auth on server boot
   ensureDefaultAdminProvisioned()
@@ -635,9 +839,8 @@ async function startServer() {
 
   // Firebase Admin Provisioning Status & Auto-Registration
   app.get('/api/admin/firebase-status', async (req, res) => {
-    const session = verifyAdminToken(extractBearer(req));
-    const hasFirebaseHeader = req.headers['x-firebase-admin'] === 'true';
-    if (!session && !hasFirebaseHeader) {
+    const authorized = await isAuthorizedAdminRequest(req);
+    if (!authorized) {
       return res.status(401).json({ error: 'Não autorizado.' });
     }
     const defaultStatus = defaultFirebaseAdminCache || (await ensureDefaultAdminProvisioned());
@@ -653,9 +856,8 @@ async function startServer() {
   });
 
   app.post('/api/admin/firebase-register', async (req, res) => {
-    const session = verifyAdminToken(extractBearer(req));
-    const hasFirebaseHeader = req.headers['x-firebase-admin'] === 'true';
-    if (!session && !hasFirebaseHeader) {
+    const authorized = await isAuthorizedAdminRequest(req);
+    if (!authorized) {
       return res.status(401).json({ error: 'Não autorizado.' });
     }
 
@@ -745,15 +947,15 @@ async function startServer() {
 
   // Protected Admin Store
   app.get('/api/admin/store', async (req, res) => {
-    const session = verifyAdminToken(extractBearer(req));
-    if (!session) return res.status(401).json({ error: 'Não autorizado.' });
+    const authorized = await isAuthorizedAdminRequest(req);
+    if (!authorized) return res.status(401).json({ error: 'Não autorizado.' });
     const store = await readStore();
     return res.json(store);
   });
 
   app.put('/api/admin/store', async (req, res) => {
-    const session = verifyAdminToken(extractBearer(req));
-    if (!session) return res.status(401).json({ error: 'Não autorizado.' });
+    const authorized = await isAuthorizedAdminRequest(req);
+    if (!authorized) return res.status(401).json({ error: 'Não autorizado.' });
     try {
       const body = req.body as Partial<CmsStore>;
       const current = await readStore();
@@ -872,9 +1074,8 @@ Instruções:
 
   // AI Premium Development Landing Page Generator Endpoint
   app.post('/api/ai/generate-landing-page', async (req, res) => {
-    const session = verifyAdminToken(extractBearer(req));
-    const hasFirebaseHeader = req.headers['x-firebase-admin'] === 'true';
-    if (!session && !hasFirebaseHeader) {
+    const authorized = await isAuthorizedAdminRequest(req);
+    if (!authorized) {
       return res.status(401).json({ error: 'Autenticação administrativa necessária.' });
     }
 

@@ -13,11 +13,15 @@ import {
   isFirebaseAdminActive,
   loadAdminStore,
   loadPublicCatalog,
+  removeDevelopment,
   removeLandingPage,
   removeProperty,
   removeTestimonial,
+  saveCategoriesAndSyncProperties,
   saveSiteSettings,
   setFirebaseAdminConfirmed,
+  subscribeAdminStore,
+  subscribePublicCatalog,
   syncAdminsRegistryWithServer,
   updateLeadStatus,
   upsertDevelopment,
@@ -37,6 +41,7 @@ import type {
   LandingPage,
   Lead,
   Property,
+  SiteCategory,
   SiteSettings,
   SmartSearchAnswers,
   SmartSearchResponse,
@@ -163,17 +168,39 @@ export default function App() {
       refreshAdmin();
     }
 
-    const unsub = subscribeAuth(async (user) => {
+    let unsubAdminStore: (() => void) | null = null;
+    const unsubPublicStore = subscribePublicCatalog((patch) => {
+      setStore((prev) => ({
+        ...prev,
+        ...patch,
+      }));
+    });
+
+    const unsubAuth = subscribeAuth(async (user) => {
+      if (unsubAdminStore) {
+        unsubAdminStore();
+        unsubAdminStore = null;
+      }
       const active = await checkIsFirestoreAdmin(user);
       setFirebaseAdminConfirmed(active);
       setFirebaseConnected(active);
       if (active) {
         await syncAdminsRegistryWithServer().catch(() => {});
-        refreshAdmin();
+        await refreshAdmin();
+        unsubAdminStore = subscribeAdminStore((patch) => {
+          setStore((prev) => ({
+            ...prev,
+            ...patch,
+          }));
+        });
       }
     });
 
-    return () => unsub();
+    return () => {
+      unsubPublicStore();
+      if (unsubAdminStore) unsubAdminStore();
+      unsubAuth();
+    };
   }, [refreshAdmin]);
 
   const buildClientSmartMatch = useCallback(
@@ -305,6 +332,10 @@ export default function App() {
           const next = await upsertDevelopment(d, isNew, store);
           setStore(next);
         }}
+        onDeleteDevelopment={async (id: string) => {
+          const next = await removeDevelopment(id, store);
+          setStore(next);
+        }}
         onSaveLandingPage={async (lp: LandingPage, isNew: boolean) => {
           const next = await upsertLandingPage(lp, isNew, store);
           setStore(next);
@@ -329,6 +360,13 @@ export default function App() {
           const next = await saveSiteSettings(s, store);
           setStore(next);
         }}
+        onSaveCategories={async (
+          nextCategories: SiteCategory[],
+          renames: Array<{ from: string; to: string }> = []
+        ) => {
+          const next = await saveCategoriesAndSyncProperties(nextCategories, renames, store);
+          setStore(next);
+        }}
         onNavigate={navigate}
       />
     );
@@ -343,7 +381,12 @@ export default function App() {
     if (!lp || (lp.status !== 'published' && !hasAdminAccess)) {
       return (
         <div className="min-h-screen flex flex-col">
-          <Navbar currentPath={path} onNavigate={navigate} settings={store.settings} />
+          <Navbar
+            currentPath={path}
+            onNavigate={navigate}
+            onBrowseCatalog={handleBrowseCatalog}
+            settings={store.settings}
+          />
           <main className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
             <h1 className="font-serif text-3xl font-semibold text-[#0F2936]">
               Empreendimento não encontrado ou em preparação
@@ -359,7 +402,11 @@ export default function App() {
               Ver Todos os Empreendimentos
             </button>
           </main>
-          <Footer settings={store.settings} onNavigate={navigate} />
+          <Footer
+            settings={store.settings}
+            onNavigate={navigate}
+            onBrowseCatalog={handleBrowseCatalog}
+          />
         </div>
       );
     }
@@ -383,7 +430,11 @@ export default function App() {
           }}
           onNavigate={navigate}
         />
-        <Footer settings={store.settings} onNavigate={navigate} />
+        <Footer
+          settings={store.settings}
+          onNavigate={navigate}
+          onBrowseCatalog={handleBrowseCatalog}
+        />
         <WhatsAppFloat
           whatsappNumber={store.settings.whatsappNumber}
           instagramHandle={store.settings.instagramHandle}
@@ -416,7 +467,12 @@ export default function App() {
             onComplete={handleIntroComplete}
           />
         )}
-        <Navbar currentPath={path} onNavigate={navigate} settings={store.settings} />
+        <Navbar
+          currentPath={path}
+          onNavigate={navigate}
+          onBrowseCatalog={handleBrowseCatalog}
+          settings={store.settings}
+        />
 
         <main className="flex-1">
           {selectedProperty ? (
@@ -434,6 +490,7 @@ export default function App() {
           ) : path === '/resultados' || path === '/imoveis' ? (
             <ResultsAndCatalogPage
               properties={store.properties}
+              categories={store.settings.categories}
               aiResult={path === '/resultados' ? aiResult : null}
               initialPreset={path === '/imoveis' ? catalogPreset : null}
               onClearAi={() => {
@@ -477,7 +534,11 @@ export default function App() {
           )}
         </main>
 
-        <Footer settings={store.settings} onNavigate={navigate} />
+        <Footer
+          settings={store.settings}
+          onNavigate={navigate}
+          onBrowseCatalog={handleBrowseCatalog}
+        />
         <WhatsAppFloat
           whatsappNumber={store.settings.whatsappNumber}
           instagramHandle={store.settings.instagramHandle}

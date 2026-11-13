@@ -9,10 +9,12 @@ import {
   RotateCcw,
   Sparkles,
 } from 'lucide-react';
+import { DEFAULT_CATEGORIES } from '../data/seedData.ts';
 import { formatCurrency } from '../lib/dataService.ts';
 import type {
   CatalogFilterPreset,
   Property,
+  SiteCategory,
   SmartSearchResponse,
 } from '../types.ts';
 import {
@@ -26,6 +28,7 @@ import { SafeImage } from '../components/SafeImage.tsx';
 
 interface ResultsAndCatalogPageProps {
   properties: Property[];
+  categories?: SiteCategory[];
   aiResult: SmartSearchResponse | null;
   initialPreset?: CatalogFilterPreset | null;
   onClearAi: () => void;
@@ -41,6 +44,7 @@ type SortOption = 'relevance' | 'price_asc' | 'price_desc' | 'area_desc';
 
 export const ResultsAndCatalogPage: React.FC<ResultsAndCatalogPageProps> = ({
   properties,
+  categories,
   aiResult,
   initialPreset,
   onClearAi,
@@ -81,10 +85,13 @@ export const ResultsAndCatalogPage: React.FC<ResultsAndCatalogPageProps> = ({
     [properties]
   );
 
-  const types = useMemo(
-    () => ['Todos', ...Array.from(new Set(properties.map((p) => p.propertyType)))],
-    [properties]
-  );
+  const types = useMemo(() => {
+    const configuredNames = (
+      categories && categories.length > 0 ? categories : DEFAULT_CATEGORIES
+    ).map((c) => c.name);
+    const propertyNames = properties.map((p) => p.propertyType);
+    return ['Todos', ...Array.from(new Set([...configuredNames, ...propertyNames]))];
+  }, [categories, properties]);
 
   const recommendationMap = useMemo(() => {
     const map = new Map<string, { score: number; reason: string }>();
@@ -242,6 +249,27 @@ export const ResultsAndCatalogPage: React.FC<ResultsAndCatalogPageProps> = ({
                   Limpar filtros
                 </button>
               </div>
+            </div>
+
+            {/* Quick Category Tabs Synced with Admin Panel */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {types.map((t) => {
+                const active = propertyType === t;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setPropertyType(t)}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                      active
+                        ? 'bg-[#0F2936] text-white border-[#0F2936]'
+                        : 'bg-[#FAF9F6] text-[#0F2936]/75 border-[#0F2936]/12 hover:border-[#C59B48]'
+                    }`}
+                  >
+                    {t === 'Todos' ? 'Todas as categorias' : t}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Building2 } from 'lucide-react';
-import { normalizeAssetImageUrl } from '../data/seedData.ts';
+import { getLocalFallbackImageUrl, normalizeAssetImageUrl } from '../data/seedData.ts';
 
 interface SafeImageProps {
   src?: string;
@@ -15,10 +15,25 @@ export const SafeImage: React.FC<SafeImageProps> = ({
   className = '',
   fallbackLabel,
 }) => {
+  const primarySrc = normalizeAssetImageUrl(src);
+  const [currentSrc, setCurrentSrc] = useState(primarySrc);
   const [failed, setFailed] = useState(false);
-  const resolvedSrc = normalizeAssetImageUrl(src);
 
-  if (!resolvedSrc || failed) {
+  useEffect(() => {
+    setCurrentSrc(normalizeAssetImageUrl(src));
+    setFailed(false);
+  }, [src]);
+
+  const handleError = () => {
+    const localBackup = getLocalFallbackImageUrl(currentSrc);
+    if (localBackup && currentSrc !== localBackup) {
+      setCurrentSrc(localBackup);
+      return;
+    }
+    setFailed(true);
+  };
+
+  if (!currentSrc || failed) {
     return (
       <div
         role="img"
@@ -35,10 +50,10 @@ export const SafeImage: React.FC<SafeImageProps> = ({
 
   return (
     <img
-      src={resolvedSrc}
+      src={currentSrc}
       alt={alt}
       referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
+      onError={handleError}
       className={className}
       loading="lazy"
     />

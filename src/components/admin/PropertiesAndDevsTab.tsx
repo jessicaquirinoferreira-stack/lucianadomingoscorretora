@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Edit3, Plus, Trash2 } from 'lucide-react';
-import { BRAND_IMAGES } from '../../data/seedData.ts';
+import { BRAND_IMAGES, DEFAULT_CATEGORIES } from '../../data/seedData.ts';
 import { formatCurrency, slugify } from '../../lib/dataService.ts';
 import type {
   Development,
@@ -10,11 +10,14 @@ import type {
   PropertyPurpose,
   PropertyStatus,
   PropertyType,
+  SiteCategory,
 } from '../../types.ts';
 import { SafeImage } from '../SafeImage.tsx';
+import { BlobMediaManager } from './BlobMediaManager.tsx';
 
 interface PropertiesTabProps {
   properties: Property[];
+  categories?: SiteCategory[];
   onSaveProperty: (p: Property, isNew: boolean) => Promise<void>;
   onDeleteProperty: (id: string) => Promise<void>;
 }
@@ -55,12 +58,22 @@ const EMPTY_PROPERTY = (): Property => {
 
 export const PropertiesTab: React.FC<PropertiesTabProps> = ({
   properties,
+  categories,
   onSaveProperty,
   onDeleteProperty,
 }) => {
   const [editing, setEditing] = useState<Property | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const availableCategoryNames = Array.from(
+    new Set([
+      ...(categories && categories.length > 0 ? categories : DEFAULT_CATEGORIES).map(
+        (c) => c.name
+      ),
+      ...(editing?.propertyType ? [editing.propertyType] : []),
+    ])
+  );
 
   const startNew = () => {
     setEditing(EMPTY_PROPERTY());
@@ -181,13 +194,11 @@ export const PropertiesTab: React.FC<PropertiesTabProps> = ({
                 }
                 className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
               >
-                {['Apartamento', 'Casa', 'Sobrado', 'Cobertura', 'Studio', 'Terreno', 'Comercial'].map(
-                  (t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  )
-                )}
+                {availableCategoryNames.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -329,22 +340,15 @@ export const PropertiesTab: React.FC<PropertiesTabProps> = ({
             </div>
 
             <div className="md:col-span-3">
-              <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
-                URLs das Fotos (uma por linha)
-              </label>
-              <textarea
-                rows={2}
-                value={editing.images.join('\n')}
-                onChange={(e) =>
-                  setEditing({
-                    ...editing,
-                    images: e.target.value
-                      .split('\n')
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  })
-                }
-                className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+              <BlobMediaManager
+                folder={`properties/${editing.id}`}
+                photos={editing.images}
+                onChangePhotos={(images) => setEditing({ ...editing, images })}
+                photosLabel="Fotos do Imóvel (Ilimitado · Vercel Blob)"
+                videoUrls={editing.videoUrls || []}
+                onChangeVideoUrls={(videoUrls) => setEditing({ ...editing, videoUrls })}
+                attachments={editing.attachments || []}
+                onChangeAttachments={(attachments) => setEditing({ ...editing, attachments })}
               />
             </div>
           </div>
@@ -405,14 +409,17 @@ export const PropertiesTab: React.FC<PropertiesTabProps> = ({
 interface DevelopmentsTabProps {
   developments: Development[];
   onSaveDevelopment: (d: Development, isNew: boolean) => Promise<void>;
+  onDeleteDevelopment?: (id: string) => Promise<void>;
 }
 
 export const DevelopmentsTab: React.FC<DevelopmentsTabProps> = ({
   developments,
   onSaveDevelopment,
+  onDeleteDevelopment,
 }) => {
   const [editing, setEditing] = useState<Development | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const startNew = () => {
     const now = new Date().toISOString();
@@ -432,6 +439,8 @@ export const DevelopmentsTab: React.FC<DevelopmentsTabProps> = ({
       heroImage: BRAND_IMAGES.devReserva,
       galleryImages: [BRAND_IMAGES.devReserva, BRAND_IMAGES.interiorLiving],
       floorPlanImages: [BRAND_IMAGES.interiorLiving],
+      videoUrls: [],
+      attachments: [],
       typologies: [
         {
           name: 'Apartamento 2 Dormitórios',
@@ -452,15 +461,28 @@ export const DevelopmentsTab: React.FC<DevelopmentsTabProps> = ({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editing) return;
-    await onSaveDevelopment(
-      {
-        ...editing,
-        slug: slugify(editing.slug || editing.name),
-        updatedAt: new Date().toISOString(),
-      },
-      isNew
-    );
-    setEditing(null);
+    setSaving(true);
+    try {
+      const normalizedGallery = editing.galleryImages.length > 0
+        ? editing.galleryImages
+        : editing.heroImage
+        ? [editing.heroImage]
+        : [];
+      const resolvedHero = editing.heroImage || normalizedGallery[0] || BRAND_IMAGES.devReserva;
+      await onSaveDevelopment(
+        {
+          ...editing,
+          heroImage: resolvedHero,
+          galleryImages: normalizedGallery,
+          slug: slugify(editing.slug || editing.name),
+          updatedAt: new Date().toISOString(),
+        },
+        isNew
+      );
+      setEditing(null);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -503,9 +525,10 @@ export const DevelopmentsTab: React.FC<DevelopmentsTabProps> = ({
               </button>
               <button
                 type="submit"
+                disabled={saving}
                 className="px-4 py-2 bg-[#0F2936] text-white text-xs font-semibold rounded-lg cursor-pointer"
               >
-                Salvar Empreendimento
+                {saving ? 'Salvando...' : 'Salvar Empreendimento'}
               </button>
             </div>
           </div>
@@ -595,25 +618,45 @@ export const DevelopmentsTab: React.FC<DevelopmentsTabProps> = ({
 
             <div className="md:col-span-2">
               <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
-                Imagem Principal (URL)
+                Tagline (Frase de Destaque)
               </label>
               <input
                 type="text"
-                value={editing.heroImage}
-                onChange={(e) => setEditing({ ...editing, heroImage: e.target.value })}
+                value={editing.tagline}
+                onChange={(e) => setEditing({ ...editing, tagline: e.target.value })}
+                placeholder="Ex: Arquitetura contemporânea abraçada pela natureza"
                 className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
               />
             </div>
 
             <div className="md:col-span-3">
               <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
-                Tagline / Descrição
+                Descrição Completa
               </label>
               <textarea
-                rows={2}
+                rows={3}
                 value={editing.description}
                 onChange={(e) => setEditing({ ...editing, description: e.target.value })}
                 className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+              />
+            </div>
+
+            <div className="md:col-span-3">
+              <BlobMediaManager
+                folder={`developments/${editing.id}`}
+                heroImage={editing.heroImage}
+                onChangeHeroImage={(heroImage) => setEditing({ ...editing, heroImage })}
+                photos={editing.galleryImages}
+                onChangePhotos={(galleryImages) => setEditing({ ...editing, galleryImages })}
+                photosLabel="Fotos do Empreendimento (Ilimitado · Vercel Blob)"
+                floorPlans={editing.floorPlanImages}
+                onChangeFloorPlans={(floorPlanImages) =>
+                  setEditing({ ...editing, floorPlanImages })
+                }
+                videoUrls={editing.videoUrls || []}
+                onChangeVideoUrls={(videoUrls) => setEditing({ ...editing, videoUrls })}
+                attachments={editing.attachments || []}
+                onChangeAttachments={(attachments) => setEditing({ ...editing, attachments })}
               />
             </div>
           </div>
@@ -637,19 +680,36 @@ export const DevelopmentsTab: React.FC<DevelopmentsTabProps> = ({
                 <div className="font-serif text-base font-semibold text-[#0F2936] truncate">
                   {dev.name}
                 </div>
+                <div className="text-[11px] text-[#0F2936]/55 mt-0.5">
+                  {dev.galleryImages?.length || 0} foto(s)
+                  {dev.videoUrls?.length ? ` · ${dev.videoUrls.length} vídeo(s)` : ''}
+                  {dev.attachments?.length ? ` · ${dev.attachments.length} anexo(s)` : ''}
+                </div>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setEditing({ ...dev });
-                setIsNew(false);
-              }}
-              className="p-2 text-[#0F2936] hover:bg-[#0F2936]/8 rounded-lg cursor-pointer"
-              aria-label="Editar empreendimento"
-            >
-              <Edit3 className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing({ ...dev });
+                  setIsNew(false);
+                }}
+                className="p-2 text-[#0F2936] hover:bg-[#0F2936]/8 rounded-lg cursor-pointer"
+                aria-label="Editar empreendimento"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+              {onDeleteDevelopment && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteDevelopment(dev.id)}
+                  className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg cursor-pointer"
+                  aria-label="Excluir empreendimento"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

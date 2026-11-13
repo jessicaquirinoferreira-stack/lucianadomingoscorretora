@@ -18,11 +18,13 @@ import {
   getDocs,
   setDoc,
   deleteDoc,
+  onSnapshot,
   collection,
   query,
   where,
   serverTimestamp,
   Timestamp,
+  FieldValue,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -245,8 +247,11 @@ export {
   getDocs,
   setDoc,
   deleteDoc,
+  onSnapshot,
   collection,
   query,
   where,
   serverTimestamp,
+  Timestamp,
+  FieldValue,
 };

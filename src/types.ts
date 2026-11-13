@@ -5,11 +5,19 @@ export type PropertyType =
   | 'Cobertura'
   | 'Studio'
   | 'Terreno'
-  | 'Comercial';
+  | 'Comercial'
+  | (string & {});
 
 export type PropertyPurpose = 'Venda' | 'Locação';
 export type PropertyStatus = 'Disponível' | 'Reservado' | 'Vendido';
 export type OccupancyType = 'Exclusivo' | 'Compartilhado' | 'Ambos';
+
+export interface MediaAttachment {
+  name: string;
+  url: string;
+  size?: number;
+  contentType?: string;
+}
 
 export interface Property {
   id: string;
@@ -37,6 +45,8 @@ export interface Property {
   lifestyleTags: string[];
   features: string[];
   images: string[];
+  videoUrls?: string[];
+  attachments?: MediaAttachment[];
   featured: boolean;
   createdAt: string;
   updatedAt: string;
@@ -68,6 +78,8 @@ export interface Development {
   heroImage: string;
   galleryImages: string[];
   floorPlanImages: string[];
+  videoUrls?: string[];
+  attachments?: MediaAttachment[];
   typologies: DevelopmentTypology[];
   amenities: string[];
   differentials: string[];
@@ -98,6 +110,8 @@ export interface LandingPage {
   differentials: LandingPageDifferential[];
   galleryImages: string[];
   floorPlanImages: string[];
+  videoUrls?: string[];
+  attachments?: MediaAttachment[];
   typologies: DevelopmentTypology[];
   locationSummary: string;
   nearbyHighlights: string[];
@@ -141,6 +155,17 @@ export interface Testimonial {
   updatedAt: string;
 }
 
+export interface SiteCategory {
+  id: string;
+  name: string;
+  slug: string;
+  kicker?: string;
+  description?: string;
+  image?: string;
+  showInMenu: boolean;
+  showOnHome: boolean;
+}
+
 export interface SiteSettings {
   id: string;
   brokerName: string;
@@ -152,6 +177,7 @@ export interface SiteSettings {
   instagramHandle: string;
   contactEmail: string;
   officeAddress: string;
+  categories?: SiteCategory[];
   updatedAt: string;
 }
 

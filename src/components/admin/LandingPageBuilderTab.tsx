@@ -15,6 +15,7 @@ import { BRAND_IMAGES } from '../../data/seedData.ts';
 import { generateAiLandingPageCopy, slugify } from '../../lib/dataService.ts';
 import type { Development, LandingPage } from '../../types.ts';
 import { SafeImage } from '../SafeImage.tsx';
+import { BlobMediaManager } from './BlobMediaManager.tsx';
 
 interface LandingPageBuilderTabProps {
   developments: Development[];
@@ -68,6 +69,8 @@ export const LandingPageBuilderTab: React.FC<LandingPageBuilderTabProps> = ({
         galleryImages: dev.galleryImages.length > 0 ? dev.galleryImages : [dev.heroImage],
         floorPlanImages:
           dev.floorPlanImages.length > 0 ? dev.floorPlanImages : [BRAND_IMAGES.interiorLiving],
+        videoUrls: dev.videoUrls || [],
+        attachments: dev.attachments || [],
         typologies: dev.typologies,
         locationSummary: generated.locationSummary || `${dev.neighborhood}, ${dev.city}`,
         nearbyHighlights: Array.isArray(generated.nearbyHighlights)
@@ -421,18 +424,6 @@ export const LandingPageBuilderTab: React.FC<LandingPageBuilderTabProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
-                URL da Imagem Principal (Hero)
-              </label>
-              <input
-                type="text"
-                value={editingLp.heroImage}
-                onChange={(e) => setEditingLp({ ...editingLp, heroImage: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#0F2936]/70 mb-1">
                 Texto do Botão Principal (CTA)
               </label>
               <input
@@ -440,6 +431,25 @@ export const LandingPageBuilderTab: React.FC<LandingPageBuilderTabProps> = ({
                 value={editingLp.ctaPrimaryText}
                 onChange={(e) => setEditingLp({ ...editingLp, ctaPrimaryText: e.target.value })}
                 className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#0F2936]/15 rounded-lg text-sm"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <BlobMediaManager
+                folder={`landing-pages/${editingLp.id}`}
+                heroImage={editingLp.heroImage}
+                onChangeHeroImage={(heroImage) => setEditingLp({ ...editingLp, heroImage })}
+                photos={editingLp.galleryImages}
+                onChangePhotos={(galleryImages) => setEditingLp({ ...editingLp, galleryImages })}
+                photosLabel="Fotos da Landing Page (Ilimitado · Vercel Blob)"
+                floorPlans={editingLp.floorPlanImages}
+                onChangeFloorPlans={(floorPlanImages) =>
+                  setEditingLp({ ...editingLp, floorPlanImages })
+                }
+                videoUrls={editingLp.videoUrls || []}
+                onChangeVideoUrls={(videoUrls) => setEditingLp({ ...editingLp, videoUrls })}
+                attachments={editingLp.attachments || []}
+                onChangeAttachments={(attachments) => setEditingLp({ ...editingLp, attachments })}
               />
             </div>
 

@@ -13,9 +13,11 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Tag,
   Trash2,
   Users,
 } from 'lucide-react';
+import { DEFAULT_CATEGORIES } from '../data/seedData.ts';
 import {
   fetchFirebaseAdminStatus,
   formatCurrency,
@@ -42,10 +44,12 @@ import type {
   Lead,
   LeadStatus,
   Property,
+  SiteCategory,
   SiteSettings,
   Testimonial,
 } from '../types.ts';
 import { BrandLogo } from '../components/BrandLogo.tsx';
+import { CategoriesTab } from '../components/admin/CategoriesTab.tsx';
 import { LandingPageBuilderTab } from '../components/admin/LandingPageBuilderTab.tsx';
 import { DevelopmentsTab, PropertiesTab } from '../components/admin/PropertiesAndDevsTab.tsx';
 
@@ -53,6 +57,7 @@ type AdminTab =
   | 'dashboard'
   | 'landing_pages'
   | 'properties'
+  | 'categories'
   | 'developments'
   | 'leads'
   | 'testimonials'
@@ -65,12 +70,17 @@ interface AdminPageProps {
   onSaveProperty: (p: Property, isNew: boolean) => Promise<void>;
   onDeleteProperty: (id: string) => Promise<void>;
   onSaveDevelopment: (d: Development, isNew: boolean) => Promise<void>;
+  onDeleteDevelopment: (id: string) => Promise<void>;
   onSaveLandingPage: (lp: LandingPage, isNew: boolean) => Promise<void>;
   onDeleteLandingPage: (id: string) => Promise<void>;
   onUpdateLead: (lead: Lead) => Promise<void>;
   onSaveTestimonial: (t: Testimonial, isNew: boolean) => Promise<void>;
   onDeleteTestimonial: (id: string) => Promise<void>;
   onSaveSettings: (s: SiteSettings) => Promise<void>;
+  onSaveCategories: (
+    nextCategories: SiteCategory[],
+    renames?: Array<{ from: string; to: string }>
+  ) => Promise<void>;
   onNavigate: (path: string) => void;
 }
 
@@ -81,12 +91,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   onSaveProperty,
   onDeleteProperty,
   onSaveDevelopment,
+  onDeleteDevelopment,
   onSaveLandingPage,
   onDeleteLandingPage,
   onUpdateLead,
   onSaveTestimonial,
   onDeleteTestimonial,
   onSaveSettings,
+  onSaveCategories,
   onNavigate,
 }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
@@ -118,6 +130,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const [newTestRole, setNewTestRole] = useState('');
   const [newTestCity, setNewTestCity] = useState('Estância Velha · RS');
   const [newTestQuote, setNewTestQuote] = useState('');
+
+  useEffect(() => {
+    setSettingsForm(store.settings);
+  }, [store.settings]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -440,6 +456,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       icon: <Sparkles className="w-4 h-4 text-[#C59B48]" />,
     },
     { id: 'properties', label: 'Gestão de Imóveis', icon: <Home className="w-4 h-4" /> },
+    { id: 'categories', label: 'Categorias', icon: <Tag className="w-4 h-4" /> },
     { id: 'developments', label: 'Empreendimentos', icon: <Building2 className="w-4 h-4" /> },
     { id: 'leads', label: 'Leads e Mensagens', icon: <Users className="w-4 h-4" /> },
     { id: 'testimonials', label: 'Depoimentos', icon: <MessageSquare className="w-4 h-4" /> },
@@ -683,8 +700,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           {activeTab === 'properties' && (
             <PropertiesTab
               properties={store.properties}
+              categories={store.settings.categories || DEFAULT_CATEGORIES}
               onSaveProperty={onSaveProperty}
               onDeleteProperty={onDeleteProperty}
+            />
+          )}
+
+          {activeTab === 'categories' && (
+            <CategoriesTab
+              categories={store.settings.categories || DEFAULT_CATEGORIES}
+              properties={store.properties}
+              onSaveCategories={onSaveCategories}
             />
           )}
 
@@ -692,6 +718,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             <DevelopmentsTab
               developments={store.developments}
               onSaveDevelopment={onSaveDevelopment}
+              onDeleteDevelopment={onDeleteDevelopment}
             />
           )}
 
