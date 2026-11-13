@@ -1,0 +1,197 @@
+{
+  "entities": {
+    "Property": {
+      "title": "Property",
+      "description": "Imóvel cadastrado no catálogo da corretora Luciana Domingos.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "slug": { "type": "string", "maxLength": 160 },
+        "description": { "type": "string", "maxLength": 5000 },
+        "propertyType": { "type": "string", "enum": ["Apartamento", "Casa", "Sobrado", "Cobertura", "Studio", "Terreno", "Comercial"] },
+        "purpose": { "type": "string", "enum": ["Venda", "Locação"] },
+        "status": { "type": "string", "enum": ["Disponível", "Reservado", "Vendido"] },
+        "price": { "type": "number" },
+        "condoFee": { "type": "number" },
+        "iptu": { "type": "number" },
+        "areaSqm": { "type": "number" },
+        "bedrooms": { "type": "integer" },
+        "suites": { "type": "integer" },
+        "bathrooms": { "type": "integer" },
+        "parkingSpaces": { "type": "integer" },
+        "city": { "type": "string", "maxLength": 80 },
+        "neighborhood": { "type": "string", "maxLength": 80 },
+        "address": { "type": "string", "maxLength": 200 },
+        "nearUniversity": { "type": "boolean" },
+        "universityDistance": { "type": "string", "maxLength": 120 },
+        "occupancyType": { "type": "string", "enum": ["Exclusivo", "Compartilhado", "Ambos"] },
+        "idealForPeople": { "type": "string", "maxLength": 60 },
+        "lifestyleTags": { "type": "array", "description": "Lista limitada a no máximo 12 tags de estilo de vida" },
+        "features": { "type": "array", "description": "Lista limitada a no máximo 20 diferenciais" },
+        "images": { "type": "array", "description": "Lista limitada a no máximo 15 URLs de fotos" },
+        "featured": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "propertyType", "purpose", "status", "price", "city", "neighborhood", "createdAt", "updatedAt"]
+    },
+    "Development": {
+      "title": "Development",
+      "description": "Empreendimento imobiliário em Estância Velha ou Vale dos Sinos.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "slug": { "type": "string", "maxLength": 140, "pattern": "^[a-z0-9\\-]+$" },
+        "developer": { "type": "string", "maxLength": 120 },
+        "tagline": { "type": "string", "maxLength": 220 },
+        "description": { "type": "string", "maxLength": 5000 },
+        "stage": { "type": "string", "enum": ["Lançamento", "Em Obras", "Pronto para Morar"] },
+        "deliveryDate": { "type": "string", "maxLength": 60 },
+        "city": { "type": "string", "maxLength": 80 },
+        "neighborhood": { "type": "string", "maxLength": 80 },
+        "address": { "type": "string", "maxLength": 200 },
+        "startingPrice": { "type": "number" },
+        "heroImage": { "type": "string", "maxLength": 600 },
+        "galleryImages": { "type": "array", "description": "Até 12 imagens do empreendimento" },
+        "floorPlanImages": { "type": "array", "description": "Até 8 plantas baixas" },
+        "typologies": { "type": "array", "description": "Até 10 tipologias disponíveis" },
+        "amenities": { "type": "array", "description": "Até 20 itens de lazer e infraestrutura" },
+        "differentials": { "type": "array", "description": "Até 12 diferenciais principais" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "slug", "stage", "city", "neighborhood", "startingPrice", "createdAt", "updatedAt"]
+    },
+    "LandingPage": {
+      "title": "LandingPage",
+      "description": "Landing Page Premium exclusiva gerada para um empreendimento.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "developmentId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "slug": { "type": "string", "maxLength": 140, "pattern": "^[a-z0-9\\-]+$" },
+        "status": { "type": "string", "enum": ["draft", "published"] },
+        "heroTitle": { "type": "string", "maxLength": 160 },
+        "heroSlogan": { "type": "string", "maxLength": 240 },
+        "heroSubtitle": { "type": "string", "maxLength": 500 },
+        "heroImage": { "type": "string", "maxLength": 600 },
+        "ctaPrimaryText": { "type": "string", "maxLength": 80 },
+        "differentials": { "type": "array", "description": "Até 10 diferenciais estratégicos" },
+        "galleryImages": { "type": "array", "description": "Até 12 imagens de galeria" },
+        "floorPlanImages": { "type": "array", "description": "Até 8 plantas baixas" },
+        "typologies": { "type": "array", "description": "Até 10 tipologias" },
+        "locationSummary": { "type": "string", "maxLength": 1200 },
+        "nearbyHighlights": { "type": "array", "description": "Até 8 pontos de referência" },
+        "mapQuery": { "type": "string", "maxLength": 200 },
+        "leisureHighlights": { "type": "array", "description": "Até 15 itens de lazer e infraestrutura" },
+        "whyInvestTitle": { "type": "string", "maxLength": 160 },
+        "whyInvestReasons": { "type": "array", "description": "Até 8 argumentos de investimento" },
+        "trustQuote": { "type": "string", "maxLength": 600 },
+        "trustAuthor": { "type": "string", "maxLength": 120 },
+        "seoTitle": { "type": "string", "maxLength": 120 },
+        "seoDescription": { "type": "string", "maxLength": 260 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "developmentId", "slug", "status", "heroTitle", "heroSlogan", "createdAt", "updatedAt"]
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "Contato ou lead capturado no site ou landing page de empreendimento.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "whatsapp": { "type": "string", "minLength": 8, "maxLength": 40 },
+        "email": { "type": "string", "maxLength": 160 },
+        "message": { "type": "string", "maxLength": 2000 },
+        "source": { "type": "string", "enum": ["contato", "imovel", "busca_inteligente", "landing_page"] },
+        "referenceId": { "type": "string", "maxLength": 128 },
+        "referenceTitle": { "type": "string", "maxLength": 180 },
+        "status": { "type": "string", "enum": ["Novo", "Em Atendimento", "Agendado", "Convertido"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "whatsapp", "source", "status", "createdAt", "updatedAt"]
+    },
+    "Testimonial": {
+      "title": "Testimonial",
+      "description": "Depoimento verificado de cliente atendido por Luciana Domingos.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "clientName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "clientRole": { "type": "string", "maxLength": 120 },
+        "city": { "type": "string", "maxLength": 80 },
+        "quote": { "type": "string", "minLength": 10, "maxLength": 1000 },
+        "approved": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "clientName", "quote", "approved", "createdAt", "updatedAt"]
+    },
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "Configurações gerais do site institucional e contato.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "brokerName": { "type": "string", "maxLength": 100 },
+        "creci": { "type": "string", "maxLength": 40 },
+        "slogan": { "type": "string", "maxLength": 240 },
+        "heroHeadline": { "type": "string", "maxLength": 200 },
+        "heroSubheadline": { "type": "string", "maxLength": 400 },
+        "whatsappNumber": { "type": "string", "maxLength": 30 },
+        "instagramHandle": { "type": "string", "maxLength": 80 },
+        "contactEmail": { "type": "string", "maxLength": 160 },
+        "officeAddress": { "type": "string", "maxLength": 240 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "brokerName", "creci", "whatsappNumber", "updatedAt"]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Usuário administrador autorizado a gerenciar o portal.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 160 },
+        "role": { "type": "string", "enum": ["admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/properties/{propertyId}": {
+      "schema": { "$ref": "#/entities/Property" },
+      "description": "Catálogo de imóveis disponíveis para busca inteligente e filtros."
+    },
+    "/developments/{developmentId}": {
+      "schema": { "$ref": "#/entities/Development" },
+      "description": "Empreendimentos imobiliários em Estância Velha e Vale dos Sinos."
+    },
+    "/landing_pages/{landingPageId}": {
+      "schema": { "$ref": "#/entities/LandingPage" },
+      "description": "Landing pages exclusivas geradas para empreendimentos."
+    },
+    "/leads/{leadId}": {
+      "schema": { "$ref": "#/entities/Lead" },
+      "description": "Leads e mensagens enviados pelos clientes (PII restrita a administradores)."
+    },
+    "/testimonials/{testimonialId}": {
+      "schema": { "$ref": "#/entities/Testimonial" },
+      "description": "Depoimentos de clientes para exibição pública e moderação."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SiteSettings" },
+      "description": "Configurações globais do portal imobiliário."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Registro de administradores autorizados."
+    }
+  }
+}

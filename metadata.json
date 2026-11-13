@@ -1,0 +1,8 @@
+{
+  "name": "Luciana Domingos Imóveis",
+  "description": "Consultoria imobiliária personalizada em Estância Velha e Vale dos Sinos (RS). Busca inteligente por estilo de vida, imóveis selecionados e empreendimentos exclusivos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

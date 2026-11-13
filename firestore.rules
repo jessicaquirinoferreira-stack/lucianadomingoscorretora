@@ -1,0 +1,357 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core Primitives
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'jessicaq2204@gmail.com';
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        isBootstrappedAdmin() ||
+        (isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)))
+      );
+    }
+
+    function isStringList(arr, maxLen) {
+      return arr is list && arr.size() <= maxLen && (arr.size() == 0 || arr[0] is string);
+    }
+
+    function isValidProperty(data) {
+      return data.keys().hasAll([
+        'id', 'title', 'propertyType', 'purpose', 'status', 'price',
+        'city', 'neighborhood', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'title', 'slug', 'description', 'propertyType', 'purpose', 'status',
+        'price', 'condoFee', 'iptu', 'areaSqm', 'bedrooms', 'suites', 'bathrooms',
+        'parkingSpaces', 'city', 'neighborhood', 'address', 'nearUniversity',
+        'universityDistance', 'occupancyType', 'idealForPeople', 'lifestyleTags',
+        'features', 'images', 'featured', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      data.title is string && data.title.size() >= 3 && data.title.size() <= 160 &&
+      (!('slug' in data) || (data.slug is string && data.slug.size() <= 160)) &&
+      (!('description' in data) || (data.description is string && data.description.size() <= 5000)) &&
+      data.propertyType in ['Apartamento', 'Casa', 'Sobrado', 'Cobertura', 'Studio', 'Terreno', 'Comercial'] &&
+      data.purpose in ['Venda', 'Locação'] &&
+      data.status in ['Disponível', 'Reservado', 'Vendido'] &&
+      data.price is number && data.price >= 0 &&
+      (!('condoFee' in data) || (data.condoFee is number && data.condoFee >= 0)) &&
+      (!('iptu' in data) || (data.iptu is number && data.iptu >= 0)) &&
+      (!('areaSqm' in data) || (data.areaSqm is number && data.areaSqm >= 0)) &&
+      (!('bedrooms' in data) || (data.bedrooms is int && data.bedrooms >= 0 && data.bedrooms <= 30)) &&
+      (!('suites' in data) || (data.suites is int && data.suites >= 0 && data.suites <= 20)) &&
+      (!('bathrooms' in data) || (data.bathrooms is int && data.bathrooms >= 0 && data.bathrooms <= 30)) &&
+      (!('parkingSpaces' in data) || (data.parkingSpaces is int && data.parkingSpaces >= 0 && data.parkingSpaces <= 30)) &&
+      data.city is string && data.city.size() >= 2 && data.city.size() <= 80 &&
+      data.neighborhood is string && data.neighborhood.size() >= 2 && data.neighborhood.size() <= 80 &&
+      (!('address' in data) || (data.address is string && data.address.size() <= 200)) &&
+      (!('nearUniversity' in data) || data.nearUniversity is bool) &&
+      (!('universityDistance' in data) || (data.universityDistance is string && data.universityDistance.size() <= 120)) &&
+      (!('occupancyType' in data) || data.occupancyType in ['Exclusivo', 'Compartilhado', 'Ambos']) &&
+      (!('idealForPeople' in data) || (data.idealForPeople is string && data.idealForPeople.size() <= 60)) &&
+      (!('lifestyleTags' in data) || isStringList(data.lifestyleTags, 12)) &&
+      (!('features' in data) || isStringList(data.features, 20)) &&
+      (!('images' in data) || isStringList(data.images, 15)) &&
+      (!('featured' in data) || data.featured is bool) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidDevelopment(data) {
+      return data.keys().hasAll([
+        'id', 'name', 'slug', 'stage', 'city', 'neighborhood', 'startingPrice',
+        'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'name', 'slug', 'developer', 'tagline', 'description', 'stage',
+        'deliveryDate', 'city', 'neighborhood', 'address', 'startingPrice',
+        'heroImage', 'galleryImages', 'floorPlanImages', 'typologies',
+        'amenities', 'differentials', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      data.name is string && data.name.size() >= 2 && data.name.size() <= 140 &&
+      data.slug is string && data.slug.size() >= 2 && data.slug.size() <= 140 && data.slug.matches('^[a-z0-9\\-]+$') &&
+      (!('developer' in data) || (data.developer is string && data.developer.size() <= 120)) &&
+      (!('tagline' in data) || (data.tagline is string && data.tagline.size() <= 220)) &&
+      (!('description' in data) || (data.description is string && data.description.size() <= 5000)) &&
+      data.stage in ['Lançamento', 'Em Obras', 'Pronto para Morar'] &&
+      (!('deliveryDate' in data) || (data.deliveryDate is string && data.deliveryDate.size() <= 60)) &&
+      data.city is string && data.city.size() >= 2 && data.city.size() <= 80 &&
+      data.neighborhood is string && data.neighborhood.size() >= 2 && data.neighborhood.size() <= 80 &&
+      (!('address' in data) || (data.address is string && data.address.size() <= 200)) &&
+      data.startingPrice is number && data.startingPrice >= 0 &&
+      (!('heroImage' in data) || (data.heroImage is string && data.heroImage.size() <= 600)) &&
+      (!('galleryImages' in data) || isStringList(data.galleryImages, 12)) &&
+      (!('floorPlanImages' in data) || isStringList(data.floorPlanImages, 8)) &&
+      (!('typologies' in data) || (data.typologies is list && data.typologies.size() <= 10)) &&
+      (!('amenities' in data) || isStringList(data.amenities, 20)) &&
+      (!('differentials' in data) || isStringList(data.differentials, 12)) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidLandingPage(data) {
+      return data.keys().hasAll([
+        'id', 'developmentId', 'slug', 'status', 'heroTitle', 'heroSlogan',
+        'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'developmentId', 'slug', 'status', 'heroTitle', 'heroSlogan',
+        'heroSubtitle', 'heroImage', 'ctaPrimaryText', 'differentials',
+        'galleryImages', 'floorPlanImages', 'typologies', 'locationSummary',
+        'nearbyHighlights', 'mapQuery', 'leisureHighlights', 'whyInvestTitle',
+        'whyInvestReasons', 'trustQuote', 'trustAuthor', 'seoTitle',
+        'seoDescription', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.developmentId) &&
+      data.slug is string && data.slug.size() >= 2 && data.slug.size() <= 140 && data.slug.matches('^[a-z0-9\\-]+$') &&
+      data.status in ['draft', 'published'] &&
+      data.heroTitle is string && data.heroTitle.size() >= 2 && data.heroTitle.size() <= 160 &&
+      data.heroSlogan is string && data.heroSlogan.size() >= 4 && data.heroSlogan.size() <= 240 &&
+      (!('heroSubtitle' in data) || (data.heroSubtitle is string && data.heroSubtitle.size() <= 500)) &&
+      (!('heroImage' in data) || (data.heroImage is string && data.heroImage.size() <= 600)) &&
+      (!('ctaPrimaryText' in data) || (data.ctaPrimaryText is string && data.ctaPrimaryText.size() <= 80)) &&
+      (!('differentials' in data) || (data.differentials is list && data.differentials.size() <= 10)) &&
+      (!('galleryImages' in data) || isStringList(data.galleryImages, 12)) &&
+      (!('floorPlanImages' in data) || isStringList(data.floorPlanImages, 8)) &&
+      (!('typologies' in data) || (data.typologies is list && data.typologies.size() <= 10)) &&
+      (!('locationSummary' in data) || (data.locationSummary is string && data.locationSummary.size() <= 1200)) &&
+      (!('nearbyHighlights' in data) || isStringList(data.nearbyHighlights, 8)) &&
+      (!('mapQuery' in data) || (data.mapQuery is string && data.mapQuery.size() <= 200)) &&
+      (!('leisureHighlights' in data) || isStringList(data.leisureHighlights, 15)) &&
+      (!('whyInvestTitle' in data) || (data.whyInvestTitle is string && data.whyInvestTitle.size() <= 160)) &&
+      (!('whyInvestReasons' in data) || (data.whyInvestReasons is list && data.whyInvestReasons.size() <= 8)) &&
+      (!('trustQuote' in data) || (data.trustQuote is string && data.trustQuote.size() <= 600)) &&
+      (!('trustAuthor' in data) || (data.trustAuthor is string && data.trustAuthor.size() <= 120)) &&
+      (!('seoTitle' in data) || (data.seoTitle is string && data.seoTitle.size() <= 120)) &&
+      (!('seoDescription' in data) || (data.seoDescription is string && data.seoDescription.size() <= 260)) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidLead(data) {
+      return data.keys().hasAll([
+        'id', 'name', 'whatsapp', 'source', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'name', 'whatsapp', 'email', 'message', 'source',
+        'referenceId', 'referenceTitle', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      data.name is string && data.name.size() >= 2 && data.name.size() <= 120 &&
+      data.whatsapp is string && data.whatsapp.size() >= 8 && data.whatsapp.size() <= 40 &&
+      (!('email' in data) || (data.email is string && data.email.size() <= 160)) &&
+      (!('message' in data) || (data.message is string && data.message.size() <= 2000)) &&
+      data.source in ['contato', 'imovel', 'busca_inteligente', 'landing_page'] &&
+      (!('referenceId' in data) || (data.referenceId is string && data.referenceId.size() <= 128)) &&
+      (!('referenceTitle' in data) || (data.referenceTitle is string && data.referenceTitle.size() <= 180)) &&
+      data.status in ['Novo', 'Em Atendimento', 'Agendado', 'Convertido'] &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidTestimonial(data) {
+      return data.keys().hasAll([
+        'id', 'clientName', 'quote', 'approved', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'clientName', 'clientRole', 'city', 'quote', 'approved', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      data.clientName is string && data.clientName.size() >= 2 && data.clientName.size() <= 100 &&
+      (!('clientRole' in data) || (data.clientRole is string && data.clientRole.size() <= 120)) &&
+      (!('city' in data) || (data.city is string && data.city.size() <= 80)) &&
+      data.quote is string && data.quote.size() >= 10 && data.quote.size() <= 1000 &&
+      data.approved is bool &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidSettings(data) {
+      return data.keys().hasAll(['id', 'brokerName', 'creci', 'whatsappNumber', 'updatedAt']) &&
+      data.keys().hasOnly([
+        'id', 'brokerName', 'creci', 'slogan', 'heroHeadline', 'heroSubheadline',
+        'whatsappNumber', 'instagramHandle', 'contactEmail', 'officeAddress', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      data.brokerName is string && data.brokerName.size() >= 2 && data.brokerName.size() <= 100 &&
+      data.creci is string && data.creci.size() >= 2 && data.creci.size() <= 40 &&
+      (!('slogan' in data) || (data.slogan is string && data.slogan.size() <= 240)) &&
+      (!('heroHeadline' in data) || (data.heroHeadline is string && data.heroHeadline.size() <= 200)) &&
+      (!('heroSubheadline' in data) || (data.heroSubheadline is string && data.heroSubheadline.size() <= 400)) &&
+      data.whatsappNumber is string && data.whatsappNumber.size() >= 8 && data.whatsappNumber.size() <= 30 &&
+      (!('instagramHandle' in data) || (data.instagramHandle is string && data.instagramHandle.size() <= 80)) &&
+      (!('contactEmail' in data) || (data.contactEmail is string && data.contactEmail.size() <= 160)) &&
+      (!('officeAddress' in data) || (data.officeAddress is string && data.officeAddress.size() <= 240)) &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidAdminUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
+      data.keys().hasOnly(['uid', 'email', 'role', 'createdAt']) &&
+      isValidId(data.uid) &&
+      data.email is string && data.email.size() <= 160 &&
+      data.role == 'admin' &&
+      data.createdAt is timestamp;
+    }
+
+    // Public Catalog: Properties
+    match /properties/{propertyId} {
+      allow get: if isValidId(propertyId);
+      allow list: if resource.data.status in ['Disponível', 'Reservado', 'Vendido'];
+      allow create: if isAdmin() && isValidId(propertyId) && isValidProperty(incoming()) &&
+        incoming().id == propertyId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(propertyId) && isValidProperty(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'slug', 'description', 'propertyType', 'purpose', 'status',
+          'price', 'condoFee', 'iptu', 'areaSqm', 'bedrooms', 'suites', 'bathrooms',
+          'parkingSpaces', 'city', 'neighborhood', 'address', 'nearUniversity',
+          'universityDistance', 'occupancyType', 'idealForPeople', 'lifestyleTags',
+          'features', 'images', 'featured', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(propertyId);
+    }
+
+    // Public Catalog: Developments (Empreendimentos)
+    match /developments/{developmentId} {
+      allow get: if isValidId(developmentId);
+      allow list: if resource.data.stage in ['Lançamento', 'Em Obras', 'Pronto para Morar'];
+      allow create: if isAdmin() && isValidId(developmentId) && isValidDevelopment(incoming()) &&
+        incoming().id == developmentId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(developmentId) && isValidDevelopment(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'slug', 'developer', 'tagline', 'description', 'stage',
+          'deliveryDate', 'city', 'neighborhood', 'address', 'startingPrice',
+          'heroImage', 'galleryImages', 'floorPlanImages', 'typologies',
+          'amenities', 'differentials', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(developmentId);
+    }
+
+    // Premium Development Landing Pages (Drafts hidden from public)
+    match /landing_pages/{landingPageId} {
+      allow get: if isValidId(landingPageId) && (existing().status == 'published' || isAdmin());
+      allow list: if resource.data.status == 'published' || isAdmin();
+      allow create: if isAdmin() && isValidId(landingPageId) && isValidLandingPage(incoming()) &&
+        incoming().id == landingPageId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/developments/$(incoming().developmentId));
+      allow update: if isAdmin() && isValidId(landingPageId) && isValidLandingPage(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().developmentId == existing().developmentId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'slug', 'status', 'heroTitle', 'heroSlogan', 'heroSubtitle', 'heroImage',
+          'ctaPrimaryText', 'differentials', 'galleryImages', 'floorPlanImages',
+          'typologies', 'locationSummary', 'nearbyHighlights', 'mapQuery',
+          'leisureHighlights', 'whyInvestTitle', 'whyInvestReasons', 'trustQuote',
+          'trustAuthor', 'seoTitle', 'seoDescription', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(landingPageId);
+    }
+
+    // Leads (PII Strictly Restricted to Admins for Read/Update/Delete)
+    match /leads/{leadId} {
+      allow get: if isAdmin() && isValidId(leadId);
+      allow list: if isAdmin();
+      allow create: if isValidId(leadId) && isValidLead(incoming()) &&
+        incoming().id == leadId &&
+        incoming().status == 'Novo' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(leadId) && isValidLead(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().source == existing().source &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'message', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(leadId);
+    }
+
+    // Testimonials (Moderation Gate)
+    match /testimonials/{testimonialId} {
+      allow get: if isValidId(testimonialId) && (existing().approved == true || isAdmin());
+      allow list: if resource.data.approved == true || isAdmin();
+      allow create: if isAdmin() && isValidId(testimonialId) && isValidTestimonial(incoming()) &&
+        incoming().id == testimonialId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(testimonialId) && isValidTestimonial(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'clientName', 'clientRole', 'city', 'quote', 'approved', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(testimonialId);
+    }
+
+    // Site Settings
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if resource.data.id == 'main';
+      allow create: if isAdmin() && isValidId(settingId) && isValidSettings(incoming()) &&
+        incoming().id == settingId &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(settingId) && isValidSettings(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'brokerName', 'creci', 'slogan', 'heroHeadline', 'heroSubheadline',
+          'whatsappNumber', 'instagramHandle', 'contactEmail', 'officeAddress', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(settingId);
+    }
+
+    // Admins Registry
+    match /admins/{adminId} {
+      allow get: if isAdmin() && isValidId(adminId);
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(adminId) && isValidAdminUser(incoming()) &&
+        incoming().uid == adminId &&
+        incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(adminId);
+    }
+  }
+}
